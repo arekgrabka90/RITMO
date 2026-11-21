@@ -36,6 +36,19 @@ jobs:
           cp -r /tmp/lib_bak lib
           cp /tmp/pubspec_bak.yaml pubspec.yaml
 
+      - name: Wymus compileSdk 36 we wszystkich pluginach
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat > ~/.gradle/init.d/compilesdk.gradle <<'GRADLE'
+          allprojects {
+            plugins.withId('com.android.library') {
+              afterEvaluate {
+                project.android.compileSdk = 36
+              }
+            }
+          }
+          GRADLE
+
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter build apk --release
