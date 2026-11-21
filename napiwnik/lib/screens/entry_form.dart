@@ -17,6 +17,7 @@ class EntryForm extends StatefulWidget {
 class _EntryFormState extends State<EntryForm> {
   late DateTime _date;
   int? _wid;
+  bool _saving = false;
   final _cash = TextEditingController();
   final _card = TextEditingController();
   final _out = TextEditingController();
@@ -33,7 +34,7 @@ class _EntryFormState extends State<EntryForm> {
       _cash.text = fmtInput(t.cash);
       _card.text = fmtInput(t.card);
       _out.text = fmtInput(t.tipOut);
-      _hours.text = t.hours == null ? '' : t.hours.toString().replaceAll('.', ',');
+      _hours.text = t.hours == null ? '' : fmtHours(t.hours!);
       _note.text = t.note;
     } else {
       final n = DateTime.now();
@@ -61,17 +62,20 @@ class _EntryFormState extends State<EntryForm> {
     if (d != null) setState(() => _date = DateTime(d.year, d.month, d.day));
   }
 
-  void _save() {
+  Future<void> _save() async {
+    if (_saving) return;
     final cash = parseMoney(_cash.text);
     final card = parseMoney(_card.text);
     final out = parseMoney(_out.text);
-    final hoursOk = _hours.text.trim().isEmpty || parseHours(_hours.text) != null;
+    final hours = parseHours(_hours.text);
+    final hoursOk = _hours.text.trim().isEmpty || hours != null;
     if (cash == null || card == null || out == null || !hoursOk) {
-      _toast('Sprawdź kwoty i godziny (np. 120,50 oraz 6,5).');
+      _toast('Sprawdź kwoty i godziny (np. 120,50 oraz 6,5). Kwota może mieć najwyżej 2 miejsca po przecinku.');
       return;
     }
-    if (cash + card == 0) {
-      _toast('Wpisz kwotę gotówki lub karty.');
+    // Zmiana bez napiwków jest dozwolona, ale wymaga godzin (inaczej to pusty wpis).
+    if (cash + card == 0 && hours == null) {
+      _toast('Wpisz kwotę napiwków albo godziny (zmiana bez napiwków: same godziny).');
       return;
     }
     if (out > cash + card) {
@@ -85,11 +89,23 @@ class _EntryFormState extends State<EntryForm> {
       cash: cash,
       card: card,
       tipOut: out,
-      hours: parseHours(_hours.text),
+      hours: hours,
       note: _note.text.trim(),
     );
-    (widget.tip == null ? store.addTip(tip) : store.updateTip(tip));
-    Navigator.of(context).pop();
+    setState(() => _saving = true);
+    try {
+      if (widget.tip == null) {
+        await store.addTip(tip);
+      } else {
+        await store.updateTip(tip);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      _toast('Nie udało się zapisać wpisu. Spróbuj ponownie.');
+      return;
+    }
+    if (mounted) Navigator.of(context).pop();
   }
 
   void _toast(String m) => ScaffoldMessenger.of(context)
@@ -181,7 +197,7 @@ class _EntryFormState extends State<EntryForm> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Netto'),
-                    if (hours != null && net > 0)
+                    if (hours != null && net >= 0)
                       Text('${fmtMoney((net / hours).round())} na godzinę',
                           style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
                   ],
@@ -193,7 +209,7 @@ class _EntryFormState extends State<EntryForm> {
           ),
           const SizedBox(height: 20),
           FilledButton(
-            onPressed: _save,
+            onPressed: _saving ? null : _save,
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             child: const Text('Zapisz'),
           ),

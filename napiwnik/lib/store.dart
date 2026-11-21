@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'backup.dart';
 import 'db.dart';
 import 'models.dart';
 
@@ -32,12 +31,20 @@ class Store extends ChangeNotifier {
     workplaces = (await db.query('workplaces', orderBy: 'name COLLATE NOCASE'))
         .map(Workplace.fromMap)
         .toList();
-    tips = (await db.query('tips')).map(Tip.fromMap).toList();
-    _sort();
+    await _reloadTips();
     final prefs = await SharedPreferences.getInstance();
     goal = prefs.getInt('goal') ?? 0;
-    themeMode = ThemeMode.values[prefs.getInt('theme') ?? 0];
+    final theme = prefs.getInt('theme') ?? 0;
+    themeMode = (theme >= 0 && theme < ThemeMode.values.length)
+        ? ThemeMode.values[theme]
+        : ThemeMode.system;
     notifyListeners();
+  }
+
+  Future<void> _reloadTips() async {
+    final db = await AppDb.instance;
+    tips = (await db.query('tips')).map(Tip.fromMap).toList();
+    _sort();
   }
 
   void _sort() {
@@ -48,6 +55,8 @@ class Store extends ChangeNotifier {
   }
 
   // ---- wpisy ----
+  // Zapis do bazy idzie PRZED zmianą w pamięci i błąd jest rzucany do wywołującego,
+  // więc ekran może go pokazać zamiast zamykać się po cichu.
   Future<void> addTip(Tip t) async {
     final db = await AppDb.instance;
     final id = await db.insert('tips', t.toMap()..remove('id'));
@@ -66,11 +75,22 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteTip(Tip t) async {
+  /// Wpis znika z listy od razu (Dismissible tego wymaga), a baza jest aktualizowana zaraz potem.
+  /// Zwraca false, gdy usunięcie z bazy się nie udało; wtedy lista jest odczytywana z bazy na nowo.
+  Future<bool> deleteTip(Tip t) async {
     tips.removeWhere((x) => x.id == t.id);
     notifyListeners();
-    final db = await AppDb.instance;
-    await db.delete('tips', where: 'id = ?', whereArgs: [t.id]);
+    try {
+      final db = await AppDb.instance;
+      await db.delete('tips', where: 'id = ?', whereArgs: [t.id]);
+      return true;
+    } catch (_) {
+      try {
+        await _reloadTips();
+      } catch (_) {}
+      notifyListeners();
+      return false;
+    }
   }
 
   // ---- miejsca pracy ----
@@ -92,8 +112,7 @@ class Store extends ChangeNotifier {
     final db = await AppDb.instance;
     await db.delete('workplaces', where: 'id = ?', whereArgs: [id]);
     if (filterId == id) filterId = null;
-    tips = (await db.query('tips')).map(Tip.fromMap).toList();
-    _sort();
+    await _reloadTips();
     await _reloadWorkplaces();
   }
 
@@ -124,38 +143,25 @@ class Store extends ChangeNotifier {
   }
 
   // ---- kopia zapasowa ----
-  String backupJson() => const JsonEncoder.withIndent('  ').convert({
-        'app': 'napiwnik',
-        'version': 1,
-        'workplaces': workplaces.map((w) => w.toMap()).toList(),
-        'tips': tips.map((t) => t.toMap()).toList(),
-        'goal': goal,
-      });
+  String backupJson() => encodeBackup(workplaces: workplaces, tips: tips, goal: goal);
 
-  /// Zastępuje całą bazę zawartością kopii. Rzuca FormatException przy złym pliku.
+  /// Zastępuje całą bazę zawartością kopii. Plik jest w całości sprawdzany ZANIM cokolwiek zostanie
+  /// usunięte, a zapis do bazy to jedna transakcja (przy błędzie stare dane zostają).
+  /// Rzuca FormatException przy złym pliku.
   Future<void> restore(String json) async {
-    final data = jsonDecode(json);
-    if (data is! Map || data['app'] != 'napiwnik' || data['version'] != 1) {
-      throw const FormatException('To nie jest kopia zapasowa Napiwnika.');
-    }
-    final ws = (data['workplaces'] as List)
-        .map((e) => Workplace.fromMap(Map<String, Object?>.from(e as Map)))
-        .toList();
-    final ts = (data['tips'] as List)
-        .map((e) => Tip.fromMap(Map<String, Object?>.from(e as Map)))
-        .toList();
+    final backup = parseBackup(json);
     final db = await AppDb.instance;
     await db.transaction((txn) async {
       await txn.delete('tips');
       await txn.delete('workplaces');
-      for (final w in ws) {
+      for (final w in backup.workplaces) {
         await txn.insert('workplaces', w.toMap());
       }
-      for (final t in ts) {
+      for (final t in backup.tips) {
         await txn.insert('tips', t.toMap());
       }
     });
-    await setGoal((data['goal'] as num?)?.toInt() ?? 0);
+    await setGoal(backup.goal);
     filterId = null;
     await load();
   }

@@ -178,10 +178,11 @@ class _TipTile extends StatelessWidget {
       if (tip.card > 0) 'karta ${fmtMoney(tip.card)}',
       if (tip.tipOut > 0) 'odliczono ${fmtMoney(tip.tipOut)}',
     ];
+    if (parts.isEmpty) parts.add('bez napiwków');
     final ph = tip.perHour;
     final hoursText = tip.hours == null
         ? null
-        : '${tip.hours!.toString().replaceAll('.0', '')} h'
+        : '${fmtHours(tip.hours!)} h'
             '${ph != null ? ' · ${fmtMoney(ph.round())}/h' : ''}';
 
     return Dismissible(
@@ -194,14 +195,28 @@ class _TipTile extends StatelessWidget {
         decoration: BoxDecoration(color: s.errorContainer, borderRadius: BorderRadius.circular(14)),
         child: Icon(Icons.delete_outline, color: s.onErrorContainer),
       ),
-      onDismissed: (_) {
-        store.deleteTip(tip);
-        ScaffoldMessenger.of(context)
-          ..clearSnackBars()
-          ..showSnackBar(SnackBar(
-            content: const Text('Usunięto wpis'),
-            action: SnackBarAction(label: 'Cofnij', onPressed: () => store.addTip(tip.asNew())),
-          ));
+      onDismissed: (_) async {
+        final messenger = ScaffoldMessenger.of(context);
+        final ok = await store.deleteTip(tip);
+        messenger.clearSnackBars();
+        if (!ok) {
+          messenger.showSnackBar(const SnackBar(content: Text('Nie udało się usunąć wpisu.')));
+          return;
+        }
+        messenger.showSnackBar(SnackBar(
+          content: const Text('Usunięto wpis'),
+          action: SnackBarAction(
+            label: 'Cofnij',
+            onPressed: () async {
+              try {
+                await store.addTip(tip.asNew());
+              } catch (_) {
+                messenger.showSnackBar(
+                    const SnackBar(content: Text('Nie udało się cofnąć usunięcia.')));
+              }
+            },
+          ),
+        ));
       },
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -218,8 +233,7 @@ class _TipTile extends StatelessWidget {
                     children: [
                       Text(store.workplaceName(tip.workplaceId),
                           style: const TextStyle(fontWeight: FontWeight.w600)),
-                      if (parts.isNotEmpty)
-                        Text(parts.join(' · '), style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
+                      Text(parts.join(' · '), style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
                       if (hoursText != null)
                         Text(hoursText, style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
                       if (tip.note.isNotEmpty)
