@@ -1,0 +1,204 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../models.dart';
+import '../store.dart';
+import '../theme.dart';
+import '../util.dart';
+
+class EntryForm extends StatefulWidget {
+  final Tip? tip;
+  const EntryForm({super.key, this.tip});
+
+  @override
+  State<EntryForm> createState() => _EntryFormState();
+}
+
+class _EntryFormState extends State<EntryForm> {
+  late DateTime _date;
+  int? _wid;
+  final _cash = TextEditingController();
+  final _card = TextEditingController();
+  final _out = TextEditingController();
+  final _hours = TextEditingController();
+  final _note = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    final t = widget.tip;
+    if (t != null) {
+      _date = t.date;
+      _wid = t.workplaceId;
+      _cash.text = fmtInput(t.cash);
+      _card.text = fmtInput(t.card);
+      _out.text = fmtInput(t.tipOut);
+      _hours.text = t.hours == null ? '' : t.hours.toString().replaceAll('.', ',');
+      _note.text = t.note;
+    } else {
+      final n = DateTime.now();
+      _date = DateTime(n.year, n.month, n.day);
+      _wid = store.filterId ??
+          (store.workplaces.length == 1 ? store.workplaces.first.id : null);
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in [_cash, _card, _out, _hours, _note]) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2015),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+    );
+    if (d != null) setState(() => _date = DateTime(d.year, d.month, d.day));
+  }
+
+  void _save() {
+    final cash = parseMoney(_cash.text);
+    final card = parseMoney(_card.text);
+    final out = parseMoney(_out.text);
+    final hoursOk = _hours.text.trim().isEmpty || parseHours(_hours.text) != null;
+    if (cash == null || card == null || out == null || !hoursOk) {
+      _toast('Sprawdź kwoty i godziny (np. 120,50 oraz 6,5).');
+      return;
+    }
+    if (cash + card == 0) {
+      _toast('Wpisz kwotę gotówki lub karty.');
+      return;
+    }
+    if (out > cash + card) {
+      _toast('Odliczenie nie może być większe niż suma napiwków.');
+      return;
+    }
+    final tip = Tip(
+      id: widget.tip?.id,
+      workplaceId: _wid,
+      date: _date,
+      cash: cash,
+      card: card,
+      tipOut: out,
+      hours: parseHours(_hours.text),
+      note: _note.text.trim(),
+    );
+    (widget.tip == null ? store.addTip(tip) : store.updateTip(tip));
+    Navigator.of(context).pop();
+  }
+
+  void _toast(String m) => ScaffoldMessenger.of(context)
+    ..clearSnackBars()
+    ..showSnackBar(SnackBar(content: Text(m)));
+
+  @override
+  Widget build(BuildContext context) {
+    final cash = parseMoney(_cash.text) ?? 0;
+    final card = parseMoney(_card.text) ?? 0;
+    final out = parseMoney(_out.text) ?? 0;
+    final net = cash + card - out;
+    final hours = parseHours(_hours.text);
+    final money = const TextInputType.numberWithOptions(decimal: true);
+
+    return Scaffold(
+      appBar: AppBar(title: Text(widget.tip == null ? 'Nowy wpis' : 'Edytuj wpis')),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          OutlinedButton.icon(
+            onPressed: _pickDate,
+            icon: const Icon(Icons.event),
+            label: Text(DateFormat('EEEE, d MMMM y', 'pl').format(_date)),
+            style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+          ),
+          const SizedBox(height: 16),
+          if (store.workplaces.isNotEmpty) ...[
+            DropdownButtonFormField<int?>(
+              value: _wid,
+              decoration: const InputDecoration(labelText: 'Miejsce pracy'),
+              items: [
+                const DropdownMenuItem<int?>(value: null, child: Text('Bez miejsca')),
+                for (final w in store.workplaces)
+                  DropdownMenuItem<int?>(value: w.id, child: Text(w.name)),
+              ],
+              onChanged: (v) => setState(() => _wid = v),
+            ),
+            const SizedBox(height: 16),
+          ],
+          Row(children: [
+            Expanded(
+              child: TextField(
+                controller: _cash,
+                keyboardType: money,
+                decoration: const InputDecoration(labelText: 'Gotówka', suffixText: 'zł'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _card,
+                keyboardType: money,
+                decoration: const InputDecoration(labelText: 'Karta', suffixText: 'zł'),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _out,
+            keyboardType: money,
+            decoration: const InputDecoration(
+              labelText: 'Odliczenie (np. podział z barem lub kuchnią)',
+              suffixText: 'zł',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _hours,
+            keyboardType: money,
+            decoration: const InputDecoration(labelText: 'Przepracowane godziny', suffixText: 'h'),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _note,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(labelText: 'Notatka'),
+          ),
+          const SizedBox(height: 20),
+          Panel(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Netto'),
+                    if (hours != null && net > 0)
+                      Text('${fmtMoney((net / hours).round())} na godzinę',
+                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
+                  ],
+                ),
+                Text(fmtMoney(net),
+                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, fontFeatures: tabular)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: _save,
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
+            child: const Text('Zapisz'),
+          ),
+        ],
+      ),
+    );
+  }
+}
