@@ -26,6 +26,9 @@ class Store extends ChangeNotifier {
     return 'Bez miejsca';
   }
 
+  /// Wymusza przebudowanie ekranów bez zmiany danych (np. po zmianie dnia lub miesiąca).
+  void refreshClock() => notifyListeners();
+
   Future<void> load() async {
     final db = await AppDb.instance;
     workplaces = (await db.query('workplaces', orderBy: 'name COLLATE NOCASE'))

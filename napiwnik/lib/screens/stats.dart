@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../buckets.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -137,13 +138,7 @@ class _Summary extends StatelessWidget {
   }
 }
 
-class _Bucket {
-  final String label;
-  final double value;
-  const _Bucket(this.label, this.value);
-}
-
-BarChartData _barData(BuildContext context, List<_Bucket> b,
+BarChartData _barData(BuildContext context, List<Bucket> b,
     {double width = 12, int skip = 1, Color? color}) {
   final s = Theme.of(context).colorScheme;
   return BarChartData(
@@ -196,48 +191,48 @@ class _TimeChart extends StatelessWidget {
   final DateTime today;
   const _TimeChart({required this.tips, required this.period, required this.today});
 
-  List<_Bucket> _buckets() {
-    if (period == Period.week || period == Period.month) {
-      final days = period == Period.week ? 7 : 30;
-      final start = today.subtract(Duration(days: days - 1));
-      return [
-        for (var i = 0; i < days; i++)
-          () {
-            final d = DateTime(start.year, start.month, start.day + i);
-            final sum = tips.where((t) => t.date == d).fold<int>(0, (s, t) => s + t.net);
-            final label = period == Period.week ? weekdayShort[d.weekday - 1] : '${d.day}';
-            return _Bucket(label, sum / 100);
-          }(),
-      ];
-    }
-    var months = 12;
-    if (period == Period.all) {
-      final first = tips.map((t) => t.date).reduce((a, b) => a.isBefore(b) ? a : b);
-      months = ((today.year - first.year) * 12 + today.month - first.month + 1).clamp(1, 24);
-    }
-    return [
-      for (var i = months - 1; i >= 0; i--)
-        () {
-          final m = DateTime(today.year, today.month - i, 1);
-          final sum = tips
-              .where((t) => t.date.year == m.year && t.date.month == m.month)
-              .fold<int>(0, (s, t) => s + t.net);
-          return _Bucket(DateFormat('LLL', 'pl').format(m), sum / 100);
-        }(),
-    ];
-  }
-
   @override
   Widget build(BuildContext context) {
-    final b = _buckets();
-    final width = period == Period.week ? 20.0 : (period == Period.month ? 5.0 : (b.length > 12 ? 8.0 : 14.0));
-    final skip = period == Period.month ? 5 : (b.length > 12 ? 2 : 1);
+    var b = <Bucket>[];
+    var title = 'Netto dzień po dniu';
+    var width = 12.0;
+    var skip = 1;
+    switch (period) {
+      case Period.week:
+        b = dailyBuckets(tips, today, 7, weekdayLabels: true);
+        width = 20;
+        break;
+      case Period.month:
+        b = dailyBuckets(tips, today, 30, weekdayLabels: false);
+        width = 5;
+        skip = 5;
+        break;
+      case Period.year:
+        b = monthlyBuckets(tips, today, 12);
+        title = 'Netto miesiąc po miesiącu';
+        width = 14;
+        break;
+      case Period.all:
+        final months = monthsSpanned(tips, today);
+        if (months > 24) {
+          // Długi okres: lata zamiast miesięcy, żeby nic nie było ucinane z wykresu.
+          b = yearlyBuckets(tips, today);
+          title = 'Netto rok po roku';
+          width = b.length > 8 ? 12 : 22;
+          skip = b.length > 8 ? 2 : 1;
+        } else {
+          b = monthlyBuckets(tips, today, months);
+          title = 'Netto miesiąc po miesiącu';
+          width = b.length > 12 ? 8 : 14;
+          skip = b.length > 12 ? 2 : 1;
+        }
+        break;
+    }
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(period == Period.week || period == Period.month ? 'Netto dzień po dniu' : 'Netto miesiąc po miesiącu',
-              style: const TextStyle(fontWeight: FontWeight.w700)),
+          Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 16),
           SizedBox(height: 180, child: BarChart(_barData(context, b, width: width, skip: skip))),
         ],
@@ -252,11 +247,11 @@ class _WeekdayChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final b = <_Bucket>[];
+    final b = <Bucket>[];
     for (var wd = 1; wd <= 7; wd++) {
       final list = tips.where((t) => t.date.weekday == wd).toList();
       final avg = list.isEmpty ? 0.0 : list.fold<int>(0, (s, t) => s + t.net) / list.length / 100;
-      b.add(_Bucket(weekdayShort[wd - 1], avg));
+      b.add(Bucket(weekdayShort[wd - 1], avg));
     }
     return Panel(
       child: Column(

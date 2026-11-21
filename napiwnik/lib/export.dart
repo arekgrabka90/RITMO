@@ -6,9 +6,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'store.dart';
+import 'util.dart';
 
 String _num(int grosze) => (grosze / 100).toStringAsFixed(2).replaceAll('.', ',');
-String _esc(String s) => '"${s.replaceAll('"', '""')}"';
 
 Future<void> exportCsv() async {
   final dir = await getTemporaryDirectory();
@@ -20,14 +20,14 @@ Future<void> exportCsv() async {
     final ph = t.perHour;
     b.writeln([
       DateFormat('yyyy-MM-dd').format(t.date),
-      _esc(store.workplaceName(t.workplaceId)),
+      csvCell(store.workplaceName(t.workplaceId)),
       _num(t.cash),
       _num(t.card),
       _num(t.tipOut),
       _num(t.net),
-      t.hours == null ? '' : t.hours.toString().replaceAll('.', ','),
+      t.hours == null ? '' : fmtHours(t.hours!),
       ph == null ? '' : _num(ph.round()),
-      _esc(t.note),
+      csvCell(t.note),
     ].join(';'));
   }
   await f.writeAsString(b.toString());

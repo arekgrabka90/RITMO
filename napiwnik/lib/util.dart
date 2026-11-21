@@ -46,4 +46,12 @@ String fmtHours(double h) {
   return h.toString().replaceAll('.', ',');
 }
 
+/// Komórka tekstowa CSV: cudzysłowy są podwajane, a tekst zaczynający się od =, +, -, @,
+/// tabulatora lub CR dostaje apostrof z przodu, żeby Excel nie wykonał go jako formuły.
+String csvCell(String s) {
+  final risky = s.isNotEmpty && '=+-@\t\r'.contains(s[0]);
+  final v = risky ? "'$s" : s;
+  return '"${v.replaceAll('"', '""')}"';
+}
+
 const weekdayShort = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
