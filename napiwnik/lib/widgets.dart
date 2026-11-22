@@ -6,7 +6,7 @@ import 'planning.dart';
 import 'theme.dart';
 import 'util.dart';
 
-/// Pasek „‹  Listopad 2026  ›” wspólny dla Dziennika, Statystyk i Grafiku.
+/// Pasek „‹  Listopad 2026  ›” wspólny dla Statystyk, Grafiku i szczegółów okresu.
 /// Przycisk z wartością null jest wyłączony.
 class PeriodSwitcher extends StatelessWidget {
   final String label;
@@ -121,16 +121,19 @@ class TimeRangeField extends StatelessWidget {
   }
 }
 
-/// Kalendarz miesiąca (tydzień od poniedziałku). W komórce: numer dnia, suma godzin zmian
-/// i kropki zmian (turkusowa = zaplanowana, złota = napiwki wpisane).
-/// [selected] to dni zaznaczone w trybie wyboru, [focused] to podświetlony dzień w trybie przeglądania.
+/// Kalendarz miesiąca. Tydzień zaczyna się od [weekStartDay] (1 = poniedziałek ... 7 = niedziela).
+/// W komórce: numer dnia, suma godzin zmian i kropki zmian (turkusowa = zaplanowana,
+/// złota = napiwki wpisane). [selected] to dni zaznaczone w trybie wyboru, [focused] to podświetlony
+/// dzień w trybie przeglądania. Dotknięcie wywołuje [onTap], przytrzymanie [onLongPress].
 class MonthGrid extends StatelessWidget {
   final DateTime month;
   final DateTime today;
   final Set<DateTime> selected;
   final DateTime? focused;
+  final int weekStartDay;
   final List<Shift> Function(DateTime day) shiftsOn;
   final ValueChanged<DateTime> onTap;
+  final ValueChanged<DateTime>? onLongPress;
 
   const MonthGrid({
     super.key,
@@ -138,15 +141,17 @@ class MonthGrid extends StatelessWidget {
     required this.today,
     required this.shiftsOn,
     required this.onTap,
+    this.onLongPress,
     this.selected = const {},
     this.focused,
+    this.weekStartDay = DateTime.monday,
   });
 
   @override
   Widget build(BuildContext context) {
     final s = Theme.of(context).colorScheme;
     final first = monthStart(month);
-    final offset = first.weekday - 1;
+    final offset = (first.weekday - weekStartDay + 7) % 7;
     final days = daysInMonth(first);
     final rows = ((offset + days) / 7).ceil();
 
@@ -161,6 +166,7 @@ class MonthGrid extends StatelessWidget {
       final totalMin = shifts.fold<int>(0, (a, x) => a + x.durationMin);
       return InkWell(
         onTap: () => onTap(date),
+        onLongPress: onLongPress == null ? null : () => onLongPress!(date),
         borderRadius: BorderRadius.circular(10),
         child: Container(
           height: 56,
@@ -213,12 +219,15 @@ class MonthGrid extends StatelessWidget {
     return Column(
       children: [
         Row(children: [
-          for (final n in weekdayShort)
+          for (var i = 0; i < 7; i++)
             Expanded(
               child: Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Text(n, style: TextStyle(fontSize: 12, color: s.onSurfaceVariant)),
+                  child: Text(
+                    weekdayShort[(weekStartDay - 1 + i) % 7],
+                    style: TextStyle(fontSize: 12, color: s.onSurfaceVariant),
+                  ),
                 ),
               ),
             ),

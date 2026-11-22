@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../dates.dart';
-import '../planning.dart' hide weekDays;
+import '../planning.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
@@ -12,9 +12,11 @@ enum BulkMode { week, month }
 
 /// Planowanie wielu zmian naraz: zaznaczasz dni (tydzień albo miesiąc), ustawiasz godziny
 /// wspólne dla wszystkich i ewentualnie poprawiasz pojedyncze dni (godziny niestandardowe).
+/// Na liście dni: dotknięcie zmienia godziny dnia, przytrzymanie przywraca domyślne, a
+/// przesunięcie w lewo usuwa dzień z zaznaczenia.
 class BulkPlanScreen extends StatefulWidget {
   final BulkMode mode;
-  final DateTime anchor; // poniedziałek tygodnia albo pierwszy dzień miesiąca
+  final DateTime anchor; // pierwszy dzień tygodnia albo pierwszy dzień miesiąca
   const BulkPlanScreen({super.key, required this.mode, required this.anchor});
 
   @override
@@ -80,11 +82,21 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
     });
   }
 
+  Widget _weekdayChip(int wd) {
+    final ds = daysOfWeekdayInMonth(widget.anchor, wd);
+    return FilterChip(
+      label: Text(weekdayShort[wd - 1]),
+      selected: ds.isNotEmpty && ds.every(_days.contains),
+      onSelected: (_) => _toggleWeekday(wd),
+    );
+  }
+
   Future<void> _editDay(DateTime d) async {
     final cur = _own[d] ?? _default;
-    final s = await pickTimeMin(context, cur.start, help: 'Początek zmiany: ${DateFormat('d.MM', 'pl').format(d)}');
+    final label = DateFormat('d.MM', 'pl').format(d);
+    final s = await pickTimeMin(context, cur.start, help: 'Początek zmiany: $label');
     if (s == null || !mounted) return;
-    final e = await pickTimeMin(context, cur.end, help: 'Koniec zmiany: ${DateFormat('d.MM', 'pl').format(d)}');
+    final e = await pickTimeMin(context, cur.end, help: 'Koniec zmiany: $label');
     if (e == null || !mounted) return;
     if (s == e) {
       _toast('Początek i koniec zmiany nie mogą być takie same.');
@@ -128,6 +140,7 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
     final sorted = _days.toList()..sort();
     final totalMin = sorted.fold<int>(0, (sum, d) => sum + (_own[d] ?? _default).minutes);
     final clash = sorted.where((d) => store.shifts.any((x) => sameDay(x.date, d))).length;
+    final weekDaysList = weekDays(widget.anchor);
 
     return Scaffold(
       appBar: AppBar(title: Text(isWeek ? 'Zaplanuj tydzień' : 'Zaplanuj miesiąc')),
@@ -161,7 +174,7 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
               spacing: 8,
               runSpacing: 4,
               children: [
-                for (final d in weekDays(widget.anchor))
+                for (final d in weekDaysList)
                   FilterChip(
                     label: Text('${weekdayShort[d.weekday - 1]} ${d.day}'),
                     selected: _days.contains(d),
@@ -175,11 +188,11 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
               children: [
                 ActionChip(
                   label: const Text('Pn–Pt'),
-                  onPressed: () => _setDays(weekDays(widget.anchor).take(5)),
+                  onPressed: () => _setDays(weekDaysList.where((d) => d.weekday <= DateTime.friday)),
                 ),
                 ActionChip(
                   label: const Text('Cały tydzień'),
-                  onPressed: () => _setDays(weekDays(widget.anchor)),
+                  onPressed: () => _setDays(weekDaysList),
                 ),
                 ActionChip(label: const Text('Wyczyść'), onPressed: () => _setDays(const [])),
               ],
@@ -189,6 +202,7 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
               month: widget.anchor,
               today: today,
               selected: _days,
+              weekStartDay: store.weekStartDay,
               shiftsOn: (d) => store.shifts.where((x) => sameDay(x.date, d)).toList(),
               onTap: _toggle,
             ),
@@ -197,15 +211,7 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
               spacing: 8,
               runSpacing: 4,
               children: [
-                for (var wd = 1; wd <= 7; wd++)
-                  FilterChip(
-                    label: Text(weekdayShort[wd - 1]),
-                    selected: () {
-                      final ds = daysOfWeekdayInMonth(widget.anchor, wd);
-                      return ds.isNotEmpty && ds.every(_days.contains);
-                    }(),
-                    onSelected: (_) => _toggleWeekday(wd),
-                  ),
+                for (var i = 0; i < 7; i++) _weekdayChip(((store.weekStartDay - 1 + i) % 7) + 1),
                 ActionChip(label: const Text('Wyczyść'), onPressed: () => _setDays(const [])),
               ],
             ),
@@ -247,55 +253,62 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
-            Text('Dotknij dnia, żeby ustawić dla niego inne godziny.',
-                style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
+            Text(
+              'Dotknij dnia, żeby ustawić dla niego inne godziny. Przytrzymaj, żeby wrócić do domyślnych. Przesuń w lewo, żeby usunąć dzień.',
+              style: TextStyle(color: s.onSurfaceVariant, fontSize: 13),
+            ),
             const SizedBox(height: 8),
             for (final d in sorted)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () => _editDay(d),
-                  child: Panel(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 76,
-                          child: Text(
-                            '${weekdayShort[d.weekday - 1]} ${DateFormat('d.MM', 'pl').format(d)}',
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+              Dismissible(
+                key: ValueKey('bulk-${dayKey(d)}'),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 20),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(
+                    color: s.errorContainer,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(Icons.close, color: s.onErrorContainer),
+                ),
+                onDismissed: (_) => setState(() {
+                  _days.remove(d);
+                  _own.remove(d);
+                }),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => _editDay(d),
+                    onLongPress: _own.containsKey(d) ? () => setState(() => _own.remove(d)) : null,
+                    child: Panel(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 76,
+                            child: Text(
+                              '${weekdayShort[d.weekday - 1]} ${DateFormat('d.MM', 'pl').format(d)}',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
+                            ),
                           ),
-                        ),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(() {
-                                final r = _own[d] ?? _default;
-                                return '${fmtTimeRange(r.start, r.end)} · ${fmtDuration(r.minutes)}';
-                              }()),
-                              if (_own.containsKey(d))
-                                const Text('własne godziny',
-                                    style: TextStyle(fontSize: 12, color: kBrass)),
-                            ],
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(() {
+                                  final r = _own[d] ?? _default;
+                                  return '${fmtTimeRange(r.start, r.end)} · ${fmtDuration(r.minutes)}';
+                                }()),
+                                if (_own.containsKey(d))
+                                  const Text('własne godziny',
+                                      style: TextStyle(fontSize: 12, color: kBrass)),
+                              ],
+                            ),
                           ),
-                        ),
-                        if (_own.containsKey(d))
-                          IconButton(
-                            tooltip: 'Użyj godzin domyślnych',
-                            icon: const Icon(Icons.undo),
-                            onPressed: () => setState(() => _own.remove(d)),
-                          ),
-                        IconButton(
-                          tooltip: 'Usuń dzień',
-                          icon: const Icon(Icons.close),
-                          onPressed: () => setState(() {
-                            _days.remove(d);
-                            _own.remove(d);
-                          }),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
