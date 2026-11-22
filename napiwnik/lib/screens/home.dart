@@ -9,8 +9,11 @@ import '../util.dart';
 import '../widgets.dart';
 import 'entry_form.dart';
 
-void openForm(BuildContext context, {Tip? tip}) {
-  Navigator.of(context).push(MaterialPageRoute(builder: (_) => EntryForm(tip: tip)));
+/// Formularz wpisu napiwków. Z [shift] otwiera się z danymi zmiany z grafiku.
+void openForm(BuildContext context, {Tip? tip, Shift? shift}) {
+  Navigator.of(context).push(
+    MaterialPageRoute(builder: (_) => EntryForm(tip: tip, shift: shift)),
+  );
 }
 
 class WorkplaceChips extends StatelessWidget {
@@ -206,6 +209,14 @@ class _TipTile extends StatelessWidget {
       ),
       onDismissed: (_) async {
         final messenger = ScaffoldMessenger.of(context);
+        // Zmiana z grafiku połączona z tym wpisem: po cofnięciu usunięcia połączenie wraca.
+        Shift? linkedShift;
+        for (final sh in store.shifts) {
+          if (sh.tipId == tip.id) {
+            linkedShift = sh;
+            break;
+          }
+        }
         final ok = await store.deleteTip(tip);
         messenger.clearSnackBars();
         if (!ok) {
@@ -218,7 +229,11 @@ class _TipTile extends StatelessWidget {
             label: 'Cofnij',
             onPressed: () async {
               try {
-                await store.addTip(tip.asNew());
+                if (linkedShift == null) {
+                  await store.addTip(tip.asNew());
+                } else {
+                  await store.addTipForShift(tip.asNew(), linkedShift);
+                }
               } catch (_) {
                 messenger.showSnackBar(
                     const SnackBar(content: Text('Nie udało się cofnąć usunięcia.')));

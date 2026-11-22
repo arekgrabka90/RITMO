@@ -85,3 +85,93 @@ class Tip {
     );
   }
 }
+
+/// Zaplanowana zmiana w grafiku. Godziny to minuty od północy dnia rozpoczęcia [date];
+/// gdy [endMin] <= [startMin], zmiana kończy się następnego dnia (np. 22:00–06:00).
+/// [tipId] wskazuje wpis napiwków utworzony z tej zmiany.
+class Shift {
+  final int? id;
+  final int? workplaceId;
+  final DateTime date; // sama data, lokalna północ
+  final int startMin;
+  final int endMin;
+  final String note;
+  final int? tipId;
+
+  const Shift({
+    this.id,
+    this.workplaceId,
+    required this.date,
+    required this.startMin,
+    required this.endMin,
+    this.note = '',
+    this.tipId,
+  });
+
+  int get durationMin => endMin > startMin ? endMin - startMin : 1440 - startMin + endMin;
+
+  /// Godziny zaokrąglone do 2 miejsc (7 h 20 min = 7,33), gotowe do pola godzin we wpisie.
+  double get hours => (durationMin / 60 * 100).round() / 100;
+
+  bool get overnight => endMin <= startMin;
+
+  bool get isDone => tipId != null;
+
+  DateTime get start => DateTime(date.year, date.month, date.day, 0, startMin);
+
+  DateTime get end => DateTime(date.year, date.month, date.day, 0, startMin + durationMin);
+
+  bool hasEnded(DateTime now) => !end.isAfter(now);
+
+  Shift withId(int id) => Shift(
+        id: id,
+        workplaceId: workplaceId,
+        date: date,
+        startMin: startMin,
+        endMin: endMin,
+        note: note,
+        tipId: tipId,
+      );
+
+  Shift withTip(int? tipId) => Shift(
+        id: id,
+        workplaceId: workplaceId,
+        date: date,
+        startMin: startMin,
+        endMin: endMin,
+        note: note,
+        tipId: tipId,
+      );
+
+  Shift asNew() => Shift(
+        workplaceId: workplaceId,
+        date: date,
+        startMin: startMin,
+        endMin: endMin,
+        note: note,
+        tipId: tipId,
+      );
+
+  Map<String, Object?> toMap() => {
+        'id': id,
+        'workplace_id': workplaceId,
+        'date': _dayFmt.format(date),
+        'start_min': startMin,
+        'end_min': endMin,
+        'note': note,
+        'tip_id': tipId,
+      };
+
+  factory Shift.fromMap(Map<String, Object?> m) {
+    final d = DateTime.parse(m['date'] as String);
+    return Shift(
+      id: m['id'] as int?,
+      workplaceId: m['workplace_id'] as int?,
+      date: DateTime(d.year, d.month, d.day),
+      startMin: (m['start_min'] as num).toInt(),
+      endMin: (m['end_min'] as num).toInt(),
+      note: (m['note'] as String?) ?? '',
+      tipId: m['tip_id'] as int?,
+    );
+  }
+}

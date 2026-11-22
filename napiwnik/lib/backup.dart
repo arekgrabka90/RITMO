@@ -3,18 +3,25 @@ import 'dart:convert';
 import 'models.dart';
 
 const backupApp = 'napiwnik';
-const backupVersion = 1;
+const backupVersion = 2; // 1 = bez grafiku (nadal wczytywana), 2 = z grafikiem
 
 class BackupData {
   final List<Workplace> workplaces;
   final List<Tip> tips;
+  final List<Shift> shifts;
   final int goal;
-  const BackupData({required this.workplaces, required this.tips, required this.goal});
+  const BackupData({
+    required this.workplaces,
+    required this.tips,
+    this.shifts = const [],
+    required this.goal,
+  });
 }
 
 String encodeBackup({
   required List<Workplace> workplaces,
   required List<Tip> tips,
+  List<Shift> shifts = const [],
   required int goal,
 }) =>
     const JsonEncoder.withIndent('  ').convert({
@@ -22,11 +29,13 @@ String encodeBackup({
       'version': backupVersion,
       'workplaces': workplaces.map((w) => w.toMap()).toList(),
       'tips': tips.map((t) => t.toMap()).toList(),
+      'shifts': shifts.map((s) => s.toMap()).toList(),
       'goal': goal,
     });
 
 /// Czyta i waliduje kopię zapasową BEZ dotykania bazy. Rzuca FormatException z komunikatem po polsku.
-/// Wpis wskazujący na nieistniejące miejsce pracy zostaje, ale traci przypisanie do miejsca.
+/// Wpis lub zmiana wskazujące na nieistniejące miejsce pracy zostają, ale tracą przypisanie.
+/// Zmiana wskazująca na nieistniejący (albo już zajęty) wpis napiwków traci to połączenie.
 BackupData parseBackup(String json) {
   const notBackup = FormatException('To nie jest kopia zapasowa Napiwnika.');
   const broken = FormatException('Plik kopii jest uszkodzony.');
@@ -37,9 +46,9 @@ BackupData parseBackup(String json) {
   } catch (_) {
     throw notBackup;
   }
-  if (data is! Map || data['app'] != backupApp || data['version'] != backupVersion) {
-    throw notBackup;
-  }
+  if (data is! Map || data['app'] != backupApp) throw notBackup;
+  final version = data['version'];
+  if (version != 1 && version != 2) throw notBackup;
 
   try {
     final workplaces = <Workplace>[];
@@ -75,9 +84,33 @@ BackupData parseBackup(String json) {
           : t);
     }
 
+    final shifts = <Shift>[];
+    final shiftIds = <int>{};
+    final usedTips = <int>{};
+    for (final e in (data['shifts'] as List?) ?? const []) {
+      final s = Shift.fromMap(Map<String, Object?>.from(e as Map));
+      if (s.startMin < 0 || s.startMin > 1439 || s.endMin < 0 || s.endMin > 1439 || s.startMin == s.endMin) {
+        throw broken;
+      }
+      final id = s.id;
+      if (id != null && !shiftIds.add(id)) throw broken;
+      final wid = s.workplaceId;
+      final tid = s.tipId;
+      final tipOk = tid != null && tipIds.contains(tid) && usedTips.add(tid);
+      shifts.add(Shift(
+        id: s.id,
+        workplaceId: (wid != null && !workplaceIds.contains(wid)) ? null : wid,
+        date: s.date,
+        startMin: s.startMin,
+        endMin: s.endMin,
+        note: s.note,
+        tipId: tipOk ? tid : null,
+      ));
+    }
+
     final goal = (data['goal'] as num?)?.toInt() ?? 0;
     if (goal < 0) throw broken;
-    return BackupData(workplaces: workplaces, tips: tips, goal: goal);
+    return BackupData(workplaces: workplaces, tips: tips, shifts: shifts, goal: goal);
   } catch (_) {
     throw broken;
   }

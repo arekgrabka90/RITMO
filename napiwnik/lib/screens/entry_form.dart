@@ -9,7 +9,10 @@ import '../util.dart';
 
 class EntryForm extends StatefulWidget {
   final Tip? tip;
-  const EntryForm({super.key, this.tip});
+
+  /// Zmiana z grafiku, z której wpisujemy napiwki (tylko dla nowego wpisu).
+  final Shift? shift;
+  const EntryForm({super.key, this.tip, this.shift});
 
   @override
   State<EntryForm> createState() => _EntryFormState();
@@ -25,10 +28,13 @@ class _EntryFormState extends State<EntryForm> {
   final _hours = TextEditingController();
   final _note = TextEditingController();
 
+  Shift? get _linked => widget.tip == null ? widget.shift : null;
+
   @override
   void initState() {
     super.initState();
     final t = widget.tip;
+    final linked = _linked;
     if (t != null) {
       _date = t.date;
       _wid = t.workplaceId;
@@ -37,6 +43,10 @@ class _EntryFormState extends State<EntryForm> {
       _out.text = fmtInput(t.tipOut);
       _hours.text = t.hours == null ? '' : fmtHours(t.hours!);
       _note.text = t.note;
+    } else if (linked != null) {
+      _date = linked.date;
+      _wid = linked.workplaceId;
+      _hours.text = fmtHours(linked.hours);
     } else {
       _date = dateOnly(DateTime.now());
       _wid = store.filterId ??
@@ -67,6 +77,11 @@ class _EntryFormState extends State<EntryForm> {
 
   Future<void> _save() async {
     if (_saving) return;
+    final linked = _linked;
+    if (linked != null && !linked.hasEnded(DateTime.now())) {
+      _toast('Ta zmiana jeszcze się nie zakończyła. Napiwki wpiszesz po jej końcu.');
+      return;
+    }
     final cash = parseMoney(_cash.text);
     final card = parseMoney(_card.text);
     final out = parseMoney(_out.text);
@@ -103,7 +118,9 @@ class _EntryFormState extends State<EntryForm> {
     );
     setState(() => _saving = true);
     try {
-      if (widget.tip == null) {
+      if (linked != null) {
+        await store.addTipForShift(tip, linked);
+      } else if (widget.tip == null) {
         await store.addTip(tip);
       } else {
         await store.updateTip(tip);
@@ -123,6 +140,7 @@ class _EntryFormState extends State<EntryForm> {
 
   @override
   Widget build(BuildContext context) {
+    final linked = _linked;
     final cash = parseMoney(_cash.text) ?? 0;
     final card = parseMoney(_card.text) ?? 0;
     final out = parseMoney(_out.text) ?? 0;
@@ -131,12 +149,30 @@ class _EntryFormState extends State<EntryForm> {
     final money = const TextInputType.numberWithOptions(decimal: true);
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.tip == null ? 'Nowy wpis' : 'Edytuj wpis')),
+      appBar: AppBar(
+        title: Text(linked != null
+            ? 'Napiwki ze zmiany'
+            : (widget.tip == null ? 'Nowy wpis' : 'Edytuj wpis')),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (linked != null) ...[
+            Panel(
+              child: Row(children: [
+                const Icon(Icons.event_note),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Zmiana z grafiku: ${fmtTimeRange(linked.startMin, linked.endMin)} · ${fmtDuration(linked.durationMin)}',
+                  ),
+                ),
+              ]),
+            ),
+            const SizedBox(height: 16),
+          ],
           OutlinedButton.icon(
-            onPressed: _pickDate,
+            onPressed: linked != null ? null : _pickDate,
             icon: const Icon(Icons.event),
             label: Text(DateFormat('EEEE, d MMMM y', 'pl').format(_date)),
             style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),

@@ -5,15 +5,27 @@ import 'backup.dart';
 import 'dates.dart';
 import 'db.dart';
 import 'models.dart';
+import 'planning.dart';
 
 final store = Store();
+
+/// Wynik masowego dodania zmian: pozwala to cofnąć (usuwa dodane i przywraca zastąpione).
+class BulkResult {
+  final List<int> addedIds;
+  final List<Shift> replaced;
+  const BulkResult(this.addedIds, this.replaced);
+}
 
 class Store extends ChangeNotifier {
   List<Workplace> workplaces = [];
   List<Tip> tips = [];
+  List<Shift> shifts = [];
   int? filterId; // null = wszystkie miejsca
   int goal = 0; // cel miesięczny w groszach, 0 = brak
   ThemeMode themeMode = ThemeMode.system;
+
+  /// Ostatnio użyte godziny zmiany: podpowiedź przy planowaniu.
+  TimeRange lastRange = const TimeRange(960, 1320);
 
   /// Wybrany miesiąc (pierwszy dzień) wspólny dla Dziennika i Statystyk. Nigdy w przyszłości.
   DateTime month = monthStart(DateTime.now());
@@ -22,6 +34,20 @@ class Store extends ChangeNotifier {
   List<Tip> get visible => filterId == null
       ? tips
       : tips.where((t) => t.workplaceId == filterId).toList();
+
+  List<Shift> get visibleShifts => filterId == null
+      ? shifts
+      : shifts.where((s) => s.workplaceId == filterId).toList();
+
+  List<Shift> shiftsOn(DateTime day) =>
+      visibleShifts.where((s) => sameDay(s.date, day)).toList();
+
+  Tip? tipById(int id) {
+    for (final t in tips) {
+      if (t.id == id) return t;
+    }
+    return null;
+  }
 
   String workplaceName(int? id) {
     if (id == null) return 'Bez miejsca';
@@ -53,12 +79,16 @@ class Store extends ChangeNotifier {
         .map(Workplace.fromMap)
         .toList();
     await _reloadTips();
+    await _reloadShifts();
     final prefs = await SharedPreferences.getInstance();
     goal = prefs.getInt('goal') ?? 0;
     final theme = prefs.getInt('theme') ?? 0;
     themeMode = (theme >= 0 && theme < ThemeMode.values.length)
         ? ThemeMode.values[theme]
         : ThemeMode.system;
+    final rs = prefs.getInt('range_start');
+    final re = prefs.getInt('range_end');
+    if (rs != null && re != null && TimeRange(rs, re).valid) lastRange = TimeRange(rs, re);
     notifyListeners();
   }
 
@@ -66,6 +96,11 @@ class Store extends ChangeNotifier {
     final db = await AppDb.instance;
     tips = (await db.query('tips')).map(Tip.fromMap).toList();
     _sort();
+  }
+
+  Future<void> _reloadShifts() async {
+    final db = await AppDb.instance;
+    shifts = (await db.query('shifts', orderBy: 'date, start_min')).map(Shift.fromMap).toList();
   }
 
   void _sort() {
@@ -86,6 +121,23 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Dodaje wpis napiwków i w tej samej transakcji ��czy go ze zmianą z grafiku.
+  Future<void> addTipForShift(Tip t, Shift s) async {
+    final current = shifts.firstWhere((x) => x.id == s.id, orElse: () => s);
+    if (current.tipId != null) throw StateError('Zmiana ma już wpis napiwków');
+    final db = await AppDb.instance;
+    late int id;
+    await db.transaction((txn) async {
+      id = await txn.insert('tips', t.toMap()..remove('id'));
+      await txn.update('shifts', {'tip_id': id}, where: 'id = ?', whereArgs: [s.id]);
+    });
+    tips.add(t.withId(id));
+    _sort();
+    final i = shifts.indexWhere((x) => x.id == s.id);
+    if (i >= 0) shifts[i] = shifts[i].withTip(id);
+    notifyListeners();
+  }
+
   Future<void> updateTip(Tip t) async {
     final db = await AppDb.instance;
     await db.update('tips', t.toMap()..remove('id'),
@@ -97,9 +149,11 @@ class Store extends ChangeNotifier {
   }
 
   /// Wpis znika z listy od razu (Dismissible tego wymaga), a baza jest aktualizowana zaraz potem.
-  /// Zwraca false, gdy usunięcie z bazy się nie udało; wtedy lista jest odczytywana z bazy na nowo.
+  /// Zmiana z grafiku, która była z nim połączona, wraca do stanu „bez napiwków” (baza robi to sama).
+  /// Zwraca false, gdy usunięcie z bazy się nie udało; wtedy dane są odczytywane z bazy na nowo.
   Future<bool> deleteTip(Tip t) async {
     tips.removeWhere((x) => x.id == t.id);
+    shifts = [for (final s in shifts) s.tipId == t.id ? s.withTip(null) : s];
     notifyListeners();
     try {
       final db = await AppDb.instance;
@@ -108,10 +162,83 @@ class Store extends ChangeNotifier {
     } catch (_) {
       try {
         await _reloadTips();
+        await _reloadShifts();
       } catch (_) {}
       notifyListeners();
       return false;
     }
+  }
+
+  // ---- grafik ----
+  Future<void> addShift(Shift s) async {
+    final db = await AppDb.instance;
+    await db.insert('shifts', s.toMap()..remove('id'));
+    await _reloadShifts();
+    notifyListeners();
+  }
+
+  Future<void> updateShift(Shift s) async {
+    final db = await AppDb.instance;
+    await db.update('shifts', s.toMap()..remove('id'),
+        where: 'id = ?', whereArgs: [s.id]);
+    await _reloadShifts();
+    notifyListeners();
+  }
+
+  /// Jak [deleteTip]: znika od razu, a przy błędzie bazy lista jest odczytywana na nowo i wynik to false.
+  Future<bool> deleteShift(Shift s) async {
+    shifts.removeWhere((x) => x.id == s.id);
+    notifyListeners();
+    try {
+      final db = await AppDb.instance;
+      await db.delete('shifts', where: 'id = ?', whereArgs: [s.id]);
+      return true;
+    } catch (_) {
+      try {
+        await _reloadShifts();
+      } catch (_) {}
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Dodaje wiele zmian naraz (i usuwa zastępowane) w jednej transakcji.
+  Future<BulkResult> applyBulk({required List<Shift> add, List<Shift> replace = const []}) async {
+    final db = await AppDb.instance;
+    final ids = <int>[];
+    await db.transaction((txn) async {
+      for (final s in replace) {
+        await txn.delete('shifts', where: 'id = ?', whereArgs: [s.id]);
+      }
+      for (final s in add) {
+        ids.add(await txn.insert('shifts', s.toMap()..remove('id')));
+      }
+    });
+    await _reloadShifts();
+    notifyListeners();
+    return BulkResult(ids, replace);
+  }
+
+  Future<void> revertBulk(BulkResult r) async {
+    final db = await AppDb.instance;
+    await db.transaction((txn) async {
+      for (final id in r.addedIds) {
+        await txn.delete('shifts', where: 'id = ?', whereArgs: [id]);
+      }
+      for (final s in r.replaced) {
+        await txn.insert('shifts', s.toMap()..remove('id'));
+      }
+    });
+    await _reloadShifts();
+    notifyListeners();
+  }
+
+  Future<void> setLastRange(TimeRange r) async {
+    if (!r.valid) return;
+    lastRange = r;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('range_start', r.start);
+    await prefs.setInt('range_end', r.end);
   }
 
   // ---- miejsca pracy ----
@@ -128,12 +255,13 @@ class Store extends ChangeNotifier {
     await _reloadWorkplaces();
   }
 
-  /// Wpisy zostają, tylko tracą przypisanie do miejsca.
+  /// Wpisy i zmiany zostają, tylko tracą przypisanie do miejsca.
   Future<void> deleteWorkplace(int id) async {
     final db = await AppDb.instance;
     await db.delete('workplaces', where: 'id = ?', whereArgs: [id]);
     if (filterId == id) filterId = null;
     await _reloadTips();
+    await _reloadShifts();
     await _reloadWorkplaces();
   }
 
@@ -164,7 +292,8 @@ class Store extends ChangeNotifier {
   }
 
   // ---- kopia zapasowa ----
-  String backupJson() => encodeBackup(workplaces: workplaces, tips: tips, goal: goal);
+  String backupJson() =>
+      encodeBackup(workplaces: workplaces, tips: tips, shifts: shifts, goal: goal);
 
   /// Zastępuje całą bazę zawartością kopii. Plik jest w całości sprawdzany ZANIM cokolwiek zostanie
   /// usunięte, a zapis do bazy to jedna transakcja (przy błędzie stare dane zostają).
@@ -173,6 +302,7 @@ class Store extends ChangeNotifier {
     final backup = parseBackup(json);
     final db = await AppDb.instance;
     await db.transaction((txn) async {
+      await txn.delete('shifts');
       await txn.delete('tips');
       await txn.delete('workplaces');
       for (final w in backup.workplaces) {
@@ -180,6 +310,9 @@ class Store extends ChangeNotifier {
       }
       for (final t in backup.tips) {
         await txn.insert('tips', t.toMap());
+      }
+      for (final s in backup.shifts) {
+        await txn.insert('shifts', s.toMap());
       }
     });
     await setGoal(backup.goal);
