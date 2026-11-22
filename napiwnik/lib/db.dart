@@ -9,11 +9,15 @@ class AppDb {
     final dir = await getDatabasesPath();
     return openDatabase(
       p.join(dir, 'napiwnik.db'),
-      version: 2,
+      version: 3,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
-        await db.execute(
-            'CREATE TABLE workplaces(id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL)');
+        await db.execute('''
+          CREATE TABLE workplaces(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            hourly_rate INTEGER NOT NULL DEFAULT 0
+          )''');
         await db.execute('''
           CREATE TABLE tips(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,6 +35,11 @@ class AppDb {
       // Każda zmiana schematu = nowa wersja + migracja tutaj (bez kasowania danych).
       onUpgrade: (db, oldV, newV) async {
         if (oldV < 2) await _createShifts(db);
+        if (oldV < 3) {
+          // Wersja 3: stawka godzinowa miejsca pracy (grosze za godzinę, 0 = brak).
+          await db.execute(
+              'ALTER TABLE workplaces ADD COLUMN hourly_rate INTEGER NOT NULL DEFAULT 0');
+        }
       },
     );
   }

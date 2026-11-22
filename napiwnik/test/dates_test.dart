@@ -13,6 +13,17 @@ void main() {
     expect(weekStart(DateTime(2026, 11, 22)), DateTime(2026, 11, 16)); // niedziela
   });
 
+  test('weekStart z innym pierwszym dniem tygodnia', () {
+    // 25.11.2026 to środa
+    expect(weekStart(DateTime(2026, 11, 25), DateTime.sunday), DateTime(2026, 11, 22));
+    expect(weekStart(DateTime(2026, 11, 22), DateTime.sunday), DateTime(2026, 11, 22));
+    expect(weekStart(DateTime(2026, 11, 21), DateTime.sunday), DateTime(2026, 11, 15));
+    expect(weekStart(DateTime(2026, 11, 25), DateTime.saturday), DateTime(2026, 11, 21));
+    expect(weekStart(DateTime(2026, 11, 21), DateTime.saturday), DateTime(2026, 11, 21));
+    expect(weekStart(DateTime(2026, 11, 20), DateTime.saturday), DateTime(2026, 11, 14));
+    expect(weekStart(DateTime(2026, 11, 25), DateTime.wednesday), DateTime(2026, 11, 25));
+  });
+
   test('addMonths i addDays przechodzą przez granicę roku', () {
     expect(addMonths(DateTime(2026, 11, 1), 2), DateTime(2027, 1, 1));
     expect(addMonths(DateTime(2026, 1, 1), -1), DateTime(2025, 12, 1));
@@ -27,6 +38,15 @@ void main() {
     expect(daysInMonth(DateTime(2026, 12, 1)), 31);
   });
 
+  test('daysBetween, także przez zmianę czasu', () {
+    expect(daysBetween(DateTime(2026, 11, 20), DateTime(2026, 11, 27)), 7);
+    expect(daysBetween(DateTime(2026, 11, 27), DateTime(2026, 11, 20)), -7);
+    expect(daysBetween(DateTime(2026, 11, 20), DateTime(2026, 11, 20)), 0);
+    expect(daysBetween(DateTime(2026, 3, 28), DateTime(2026, 3, 30)), 2);
+    expect(daysBetween(DateTime(2026, 10, 24), DateTime(2026, 10, 26)), 2);
+    expect(daysBetween(DateTime(2025, 12, 31), DateTime(2026, 1, 1)), 1);
+  });
+
   test('sameDay, sameMonth, dateOnly, monthStart', () {
     expect(sameDay(DateTime(2026, 11, 21, 9), DateTime(2026, 11, 21, 23)), isTrue);
     expect(sameDay(DateTime(2026, 11, 21), DateTime(2026, 11, 22)), isFalse);
@@ -34,6 +54,13 @@ void main() {
     expect(sameMonth(DateTime(2026, 11, 1), DateTime(2025, 11, 1)), isFalse);
     expect(dateOnly(DateTime(2026, 11, 21, 18, 30)), DateTime(2026, 11, 21));
     expect(monthStart(DateTime(2026, 11, 21)), DateTime(2026, 11, 1));
+  });
+
+  test('dayKey i shortDate', () {
+    expect(dayKey(DateTime(2026, 3, 5)), '2026-03-05');
+    expect(dayKey(DateTime(2026, 12, 31)), '2026-12-31');
+    expect(shortDate(DateTime(2026, 3, 5)), '5.03');
+    expect(DateTime.tryParse(dayKey(DateTime(2026, 3, 5))), DateTime(2026, 3, 5));
   });
 
   test('tytuły miesiąca i tygodnia', () {

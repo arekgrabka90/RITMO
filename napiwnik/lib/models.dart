@@ -5,11 +5,17 @@ final _dayFmt = DateFormat('yyyy-MM-dd');
 class Workplace {
   final int? id;
   final String name;
-  const Workplace({this.id, required this.name});
 
-  Map<String, Object?> toMap() => {'id': id, 'name': name};
-  factory Workplace.fromMap(Map<String, Object?> m) =>
-      Workplace(id: m['id'] as int?, name: m['name'] as String);
+  /// Stawka godzinowa w groszach (0 = brak). Służy do liczenia zarobków z godzin.
+  final int hourlyRate;
+  const Workplace({this.id, required this.name, this.hourlyRate = 0});
+
+  Map<String, Object?> toMap() => {'id': id, 'name': name, 'hourly_rate': hourlyRate};
+  factory Workplace.fromMap(Map<String, Object?> m) => Workplace(
+        id: m['id'] as int?,
+        name: m['name'] as String,
+        hourlyRate: (m['hourly_rate'] as num?)?.toInt() ?? 0,
+      );
 }
 
 /// Kwoty trzymamy w groszach (int), żeby uniknąć błędów zaokrągleń.

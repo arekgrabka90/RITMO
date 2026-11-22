@@ -11,20 +11,29 @@ DateTime addMonths(DateTime m, int n) => DateTime(m.year, m.month + n, 1);
 
 DateTime addDays(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
 
-/// Poniedziałek tygodnia, do którego należy [d].
-DateTime weekStart(DateTime d) => DateTime(d.year, d.month, d.day - (d.weekday - 1));
-
-List<DateTime> weekDays(DateTime start) {
-  final monday = weekStart(start);
-  return List.generate(7, (index) => addDays(monday, index));
-}
+/// Pierwszy dzień tygodnia, do którego należy [d]. [startDay] to dzień tygodnia, od którego
+/// zaczyna się tydzień (1 = poniedziałek ... 7 = niedziela), domyślnie poniedziałek.
+DateTime weekStart(DateTime d, [int startDay = DateTime.monday]) =>
+    DateTime(d.year, d.month, d.day - ((d.weekday - startDay + 7) % 7));
 
 int daysInMonth(DateTime m) => DateTime(m.year, m.month + 1, 0).day;
+
+/// Liczba dni od [a] do [b] (ujemna, gdy [b] jest wcześniej). Odporna na zmianę czasu.
+int daysBetween(DateTime a, DateTime b) => DateTime.utc(b.year, b.month, b.day)
+    .difference(DateTime.utc(a.year, a.month, a.day))
+    .inDays;
 
 bool sameDay(DateTime a, DateTime b) =>
     a.year == b.year && a.month == b.month && a.day == b.day;
 
 bool sameMonth(DateTime a, DateTime b) => a.year == b.year && a.month == b.month;
+
+/// "2026-11-05": do zapisu w ustawieniach.
+String dayKey(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+
+/// "5.11"
+String shortDate(DateTime d) => DateFormat('d.MM', 'pl').format(d);
 
 /// „Listopad 2026”
 String monthTitle(DateTime m) =>

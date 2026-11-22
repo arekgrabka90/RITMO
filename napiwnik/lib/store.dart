@@ -5,6 +5,7 @@ import 'backup.dart';
 import 'dates.dart';
 import 'db.dart';
 import 'models.dart';
+import 'period.dart';
 import 'planning.dart';
 
 final store = Store();
@@ -21,13 +22,24 @@ class Store extends ChangeNotifier {
   List<Tip> tips = [];
   List<Shift> shifts = [];
   int? filterId; // null = wszystkie miejsca
-  int goal = 0; // cel miesięczny w groszach, 0 = brak
+  int goal = 0; // cel napiwków na okres rozliczeniowy w groszach, 0 = brak
   ThemeMode themeMode = ThemeMode.system;
+
+  // ---- ustawienia okresu, tygodnia i wypłaty ----
+  /// Dzień tygodnia, od którego zaczyna się tydzień w kalendarzach (1 = pn ... 7 = nd).
+  int weekStartDay = DateTime.monday;
+  PeriodType periodType = PeriodType.monthly;
+
+  /// Pierwszy dzień jednego z okresów rozliczeniowych (dla okresów tygodniowych i dwutygodniowych).
+  DateTime periodAnchor = weekStart(dateOnly(DateTime.now()));
+
+  /// Dzień miesiąca, w którym przychodzi wypłata (1–31), 0 = nie ustawiono.
+  int payDay = 0;
 
   /// Ostatnio użyte godziny zmiany: podpowiedź przy planowaniu.
   TimeRange lastRange = const TimeRange(960, 1320);
 
-  /// Wybrany miesiąc (pierwszy dzień) wspólny dla Dziennika i Statystyk. Nigdy w przyszłości.
+  /// Wybrany miesiąc (pierwszy dzień) wspólny dla Statystyk. Nigdy w przyszłości.
   DateTime month = monthStart(DateTime.now());
   bool _followNow = true; // dopóki użytkownik nie wybierze innego miesiąca, śledzimy bieżący
 
@@ -56,6 +68,15 @@ class Store extends ChangeNotifier {
     }
     return 'Bez miejsca';
   }
+
+  /// Stawki godzinowe miejsc pracy (id miejsca -> grosze za godzinę), tylko ustawione.
+  Map<int, int> get rates => {
+        for (final w in workplaces)
+          if (w.id != null && w.hourlyRate > 0) w.id!: w.hourlyRate,
+      };
+
+  /// Bieżący okres rozliczeniowy według ustawień.
+  BillingPeriod get currentPeriod => periodFor(DateTime.now(), periodType, periodAnchor);
 
   void setMonth(DateTime m) {
     final current = monthStart(DateTime.now());
@@ -89,6 +110,23 @@ class Store extends ChangeNotifier {
     final rs = prefs.getInt('range_start');
     final re = prefs.getInt('range_end');
     if (rs != null && re != null && TimeRange(rs, re).valid) lastRange = TimeRange(rs, re);
+
+    final ws = prefs.getInt('week_start');
+    weekStartDay = (ws != null && ws >= 1 && ws <= 7) ? ws : DateTime.monday;
+    final pt = prefs.getInt('period_type');
+    periodType = (pt != null && pt >= 0 && pt < PeriodType.values.length)
+        ? PeriodType.values[pt]
+        : PeriodType.monthly;
+    final pa = DateTime.tryParse(prefs.getString('period_anchor') ?? '');
+    if (pa != null) {
+      periodAnchor = dateOnly(pa);
+    } else {
+      // Pierwsze uruchomienie: początek bieżącego tygodnia, zapisany na stałe.
+      periodAnchor = weekStart(dateOnly(DateTime.now()), weekStartDay);
+      await prefs.setString('period_anchor', dayKey(periodAnchor));
+    }
+    final pd = prefs.getInt('pay_day');
+    payDay = (pd != null && pd >= 1 && pd <= 31) ? pd : 0;
     notifyListeners();
   }
 
@@ -242,24 +280,27 @@ class Store extends ChangeNotifier {
   }
 
   // ---- miejsca pracy ----
-  Future<void> addWorkplace(String name) async {
+  Future<void> addWorkplace(String name, {int rate = 0}) async {
     final db = await AppDb.instance;
-    await db.insert('workplaces', {'name': name});
+    await db.insert('workplaces', {'name': name, 'hourly_rate': rate});
     await _reloadWorkplaces();
   }
 
-  Future<void> renameWorkplace(int id, String name) async {
+  Future<void> updateWorkplace(int id, String name, int rate) async {
     final db = await AppDb.instance;
-    await db.update('workplaces', {'name': name},
+    await db.update('workplaces', {'name': name, 'hourly_rate': rate},
         where: 'id = ?', whereArgs: [id]);
     await _reloadWorkplaces();
   }
 
-  /// Wpisy i zmiany zostają, tylko tracą przypisanie do miejsca.
+  /// Miejsce znika z listy od razu (Dismissible tego wymaga). Wpisy i zmiany zostają, tylko tracą
+  /// przypisanie do miejsca. Przy błędzie bazy rzuca wyjątek (wołający odczytuje dane na nowo).
   Future<void> deleteWorkplace(int id) async {
+    workplaces.removeWhere((w) => w.id == id);
+    if (filterId == id) filterId = null;
+    notifyListeners();
     final db = await AppDb.instance;
     await db.delete('workplaces', where: 'id = ?', whereArgs: [id]);
-    if (filterId == id) filterId = null;
     await _reloadTips();
     await _reloadShifts();
     await _reloadWorkplaces();
@@ -291,13 +332,40 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setWeekStartDay(int day) async {
+    if (day < 1 || day > 7) return;
+    weekStartDay = day;
+    (await SharedPreferences.getInstance()).setInt('week_start', day);
+    notifyListeners();
+  }
+
+  Future<void> setPeriodType(PeriodType t) async {
+    periodType = t;
+    (await SharedPreferences.getInstance()).setInt('period_type', t.index);
+    notifyListeners();
+  }
+
+  Future<void> setPeriodAnchor(DateTime d) async {
+    periodAnchor = dateOnly(d);
+    (await SharedPreferences.getInstance()).setString('period_anchor', dayKey(periodAnchor));
+    notifyListeners();
+  }
+
+  /// [day] 1–31, 0 = bez wypłaty.
+  Future<void> setPayDay(int day) async {
+    if (day < 0 || day > 31) return;
+    payDay = day;
+    (await SharedPreferences.getInstance()).setInt('pay_day', day);
+    notifyListeners();
+  }
+
   // ---- kopia zapasowa ----
   String backupJson() =>
       encodeBackup(workplaces: workplaces, tips: tips, shifts: shifts, goal: goal);
 
   /// Zastępuje całą bazę zawartością kopii. Plik jest w całości sprawdzany ZANIM cokolwiek zostanie
   /// usunięte, a zapis do bazy to jedna transakcja (przy błędzie stare dane zostają).
-  /// Rzuca FormatException przy złym pliku.
+  /// Rzuca FormatException przy złym pliku. Ustawienia okresu i wypłaty nie są w kopii.
   Future<void> restore(String json) async {
     final backup = parseBackup(json);
     final db = await AppDb.instance;

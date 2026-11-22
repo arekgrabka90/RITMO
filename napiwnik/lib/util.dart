@@ -78,6 +78,9 @@ String fmtShiftCount(int n) {
   return '$n $word';
 }
 
+/// "1 dzień", "2 dni", "5 dni", "22 dni".
+String fmtDays(int n) => '$n ${n == 1 ? 'dzień' : 'dni'}';
+
 /// Komórka tekstowa CSV: cudzysłowy są podwajane, a tekst zaczynający się od =, +, -, @,
 /// tabulatora lub CR dostaje apostrof z przodu, żeby Excel nie wykonał go jako formuły.
 String csvCell(String s) {
@@ -87,3 +90,13 @@ String csvCell(String s) {
 }
 
 const weekdayShort = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'So', 'Nd'];
+
+const weekdayNames = [
+  'Poniedziałek',
+  'Wtorek',
+  'Środa',
+  'Czwartek',
+  'Piątek',
+  'Sobota',
+  'Niedziela',
+];
