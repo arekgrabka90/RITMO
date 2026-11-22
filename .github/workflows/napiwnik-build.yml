@@ -38,9 +38,40 @@ jobs:
 
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
-      - run: flutter build apk --release
+
+      # Numer wersji rośnie z każdym uruchomieniem, żeby Android pozwolił zaktualizować aplikację.
+      - run: flutter build apk --release --build-number=${{ github.run_number }}
+
+      # Podpis własnym kluczem (z sekretów repozytorium). Ten sam klucz przy każdej wersji =
+      # instalacja nowej wersji na starą bez odinstalowywania. Bez sekretów APK zostaje podpisane
+      # tymczasowym kluczem debug, który jest inny przy każdym buildzie.
+      - name: Podpisz APK własnym kluczem
+        env:
+          KEYSTORE_B64: ${{ secrets.NAPIWNIK_KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.NAPIWNIK_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.NAPIWNIK_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.NAPIWNIK_KEY_PASSWORD }}
+        run: |
+          set -e
+          IN=build/app/outputs/flutter-apk/app-release.apk
+          OUT=build/napiwnik.apk
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::Brak sekretów NAPIWNIK_KEYSTORE_*. APK podpisane kluczem debug, nie zaktualizuje wcześniej zainstalowanej wersji."
+            cp "$IN" "$OUT"
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/napiwnik.jks"
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$APKSIGNER" sign \
+            --ks "$RUNNER_TEMP/napiwnik.jks" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --key-pass env:KEY_PASSWORD \
+            --out "$OUT" "$IN"
+          "$APKSIGNER" verify --print-certs "$OUT"
+          rm -f "$RUNNER_TEMP/napiwnik.jks"
 
       - uses: actions/upload-artifact@v4
         with:
           name: napiwnik-apk
-          path: napiwnik/build/app/outputs/flutter-apk/app-release.apk
+          path: napiwnik/build/napiwnik.apk
