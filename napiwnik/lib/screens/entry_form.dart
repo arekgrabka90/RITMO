@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../dates.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -37,8 +38,7 @@ class _EntryFormState extends State<EntryForm> {
       _hours.text = t.hours == null ? '' : fmtHours(t.hours!);
       _note.text = t.note;
     } else {
-      final n = DateTime.now();
-      _date = DateTime(n.year, n.month, n.day);
+      _date = dateOnly(DateTime.now());
       _wid = store.filterId ??
           (store.workplaces.length == 1 ? store.workplaces.first.id : null);
     }
@@ -52,14 +52,17 @@ class _EntryFormState extends State<EntryForm> {
     super.dispose();
   }
 
+  /// Napiwki można wpisać najpóźniej dla dzisiejszego dnia (zmiana, która się jeszcze nie odbyła,
+  /// nie ma napiwków).
   Future<void> _pickDate() async {
+    final last = dateOnly(DateTime.now());
     final d = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: _date.isAfter(last) ? last : _date,
       firstDate: DateTime(2015),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: last,
     );
-    if (d != null) setState(() => _date = DateTime(d.year, d.month, d.day));
+    if (d != null) setState(() => _date = dateOnly(d));
   }
 
   Future<void> _save() async {
@@ -71,6 +74,12 @@ class _EntryFormState extends State<EntryForm> {
     final hoursOk = _hours.text.trim().isEmpty || hours != null;
     if (cash == null || card == null || out == null || !hoursOk) {
       _toast('Sprawdź kwoty i godziny (np. 120,50 oraz 6,5). Kwota może mieć najwyżej 2 miejsca po przecinku.');
+      return;
+    }
+    // Przyszła data tylko dla starego wpisu, którego daty nie ruszamy (wcześniej było to dozwolone).
+    final dateChanged = widget.tip == null || widget.tip!.date != _date;
+    if (_date.isAfter(dateOnly(DateTime.now())) && dateChanged) {
+      _toast('Napiwki można wpisać najwcześniej dla dzisiejszego dnia.');
       return;
     }
     // Zmiana bez napiwków jest dozwolona, ale wymaga godzin (inaczej to pusty wpis).

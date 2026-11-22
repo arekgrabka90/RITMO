@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../dates.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
+import '../widgets.dart';
 import 'entry_form.dart';
 
 void openForm(BuildContext context, {Tip? tip}) {
@@ -53,10 +55,11 @@ class HomeScreen extends StatelessWidget {
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
-        final tips = store.visible;
         final now = DateTime.now();
-        final month = tips.where((t) => t.date.year == now.year && t.date.month == now.month);
-        final monthNet = month.fold<int>(0, (s, t) => s + t.net);
+        final month = store.month;
+        final isCurrent = sameMonth(month, now);
+        final tips = store.visible.where((t) => sameMonth(t.date, month)).toList();
+        final monthNet = tips.fold<int>(0, (s, t) => s + t.net);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Napiwnik')),
@@ -69,14 +72,21 @@ class HomeScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
             children: [
               const WorkplaceChips(),
-              const SizedBox(height: 12),
-              _Hero(monthNet: monthNet, goal: store.goal, month: now),
+              PeriodSwitcher(
+                label: monthTitle(month),
+                onPrev: () => store.setMonth(addMonths(month, -1)),
+                onNext: isCurrent ? null : () => store.setMonth(addMonths(month, 1)),
+                onTap: isCurrent ? null : () => store.setMonth(now),
+              ),
+              _Hero(monthNet: monthNet, goal: store.goal),
               const SizedBox(height: 8),
               if (tips.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 48),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
                   child: Text(
-                    'Brak wpisów. Po zmianie dotknij „Dodaj napiwki” i wpisz gotówkę oraz kartę.',
+                    store.tips.isEmpty
+                        ? 'Brak wpisów. Po zmianie dotknij „Dodaj napiwki” i wpisz gotówkę oraz kartę.'
+                        : 'Brak wpisów w tym miesiącu.',
                     textAlign: TextAlign.center,
                   ),
                 )
@@ -112,8 +122,7 @@ class HomeScreen extends StatelessWidget {
 class _Hero extends StatelessWidget {
   final int monthNet;
   final int goal;
-  final DateTime month;
-  const _Hero({required this.monthNet, required this.goal, required this.month});
+  const _Hero({required this.monthNet, required this.goal});
 
   @override
   Widget build(BuildContext context) {
@@ -126,9 +135,9 @@ class _Hero extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Netto w ${DateFormat('LLLL', 'pl').format(month)}',
-            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          const Text(
+            'Netto za miesiąc',
+            style: TextStyle(color: Colors.white70, fontSize: 14),
           ),
           const SizedBox(height: 4),
           Text(

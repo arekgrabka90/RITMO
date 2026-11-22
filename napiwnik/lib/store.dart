@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'backup.dart';
+import 'dates.dart';
 import 'db.dart';
 import 'models.dart';
 
@@ -13,6 +14,10 @@ class Store extends ChangeNotifier {
   int? filterId; // null = wszystkie miejsca
   int goal = 0; // cel miesięczny w groszach, 0 = brak
   ThemeMode themeMode = ThemeMode.system;
+
+  /// Wybrany miesiąc (pierwszy dzień) wspólny dla Dziennika i Statystyk. Nigdy w przyszłości.
+  DateTime month = monthStart(DateTime.now());
+  bool _followNow = true; // dopóki użytkownik nie wybierze innego miesiąca, śledzimy bieżący
 
   List<Tip> get visible => filterId == null
       ? tips
@@ -26,8 +31,21 @@ class Store extends ChangeNotifier {
     return 'Bez miejsca';
   }
 
-  /// Wymusza przebudowanie ekranów bez zmiany danych (np. po zmianie dnia lub miesiąca).
-  void refreshClock() => notifyListeners();
+  void setMonth(DateTime m) {
+    final current = monthStart(DateTime.now());
+    var v = monthStart(m);
+    if (v.isAfter(current)) v = current;
+    month = v;
+    _followNow = v == current;
+    notifyListeners();
+  }
+
+  /// Wywoływane po powrocie do aplikacji: przelicza „dzisiaj”, a jeśli użytkownik jest
+  /// na bieżącym miesiącu, to przechodzi za nim na nowy.
+  void refreshClock() {
+    if (_followNow) month = monthStart(DateTime.now());
+    notifyListeners();
+  }
 
   Future<void> load() async {
     final db = await AppDb.instance;

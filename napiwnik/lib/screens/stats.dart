@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../buckets.dart';
+import '../dates.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
+import '../widgets.dart';
 import 'home.dart';
 
 enum Period { week, month, year, all }
@@ -20,16 +22,18 @@ class StatsScreen extends StatefulWidget {
 class _StatsScreenState extends State<StatsScreen> {
   Period _period = Period.month;
 
-  DateTime? _cutoff(DateTime today) {
+  /// 7 dni i Rok to okna „od dziś wstecz”, Miesiąc to wybrany miesiąc kalendarzowy
+  /// (ten sam co w Dzienniku), Całość to wszystko.
+  bool _inPeriod(Tip t, DateTime today) {
     switch (_period) {
       case Period.week:
-        return today.subtract(const Duration(days: 6));
+        return !t.date.isBefore(addDays(today, -6));
       case Period.month:
-        return today.subtract(const Duration(days: 29));
+        return sameMonth(t.date, store.month);
       case Period.year:
-        return DateTime(today.year, today.month - 11, 1);
+        return !t.date.isBefore(addMonths(monthStart(today), -11));
       case Period.all:
-        return null;
+        return true;
     }
   }
 
@@ -38,12 +42,10 @@ class _StatsScreenState extends State<StatsScreen> {
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
-        final n = DateTime.now();
-        final today = DateTime(n.year, n.month, n.day);
-        final cutoff = _cutoff(today);
-        final tips = store.visible
-            .where((t) => cutoff == null || !t.date.isBefore(cutoff))
-            .toList();
+        final today = dateOnly(DateTime.now());
+        final month = store.month;
+        final isCurrent = sameMonth(month, today);
+        final tips = store.visible.where((t) => _inPeriod(t, today)).toList();
 
         return Scaffold(
           appBar: AppBar(title: const Text('Statystyki')),
@@ -56,14 +58,23 @@ class _StatsScreenState extends State<StatsScreen> {
                 showSelectedIcon: false,
                 segments: const [
                   ButtonSegment(value: Period.week, label: Text('7 dni')),
-                  ButtonSegment(value: Period.month, label: Text('30 dni')),
+                  ButtonSegment(value: Period.month, label: Text('Miesiąc')),
                   ButtonSegment(value: Period.year, label: Text('Rok')),
                   ButtonSegment(value: Period.all, label: Text('Całość')),
                 ],
                 selected: {_period},
                 onSelectionChanged: (s) => setState(() => _period = s.first),
               ),
-              const SizedBox(height: 16),
+              if (_period == Period.month) ...[
+                const SizedBox(height: 4),
+                PeriodSwitcher(
+                  label: monthTitle(month),
+                  onPrev: () => store.setMonth(addMonths(month, -1)),
+                  onNext: isCurrent ? null : () => store.setMonth(addMonths(month, 1)),
+                  onTap: isCurrent ? null : () => store.setMonth(today),
+                ),
+              ],
+              const SizedBox(height: 12),
               if (tips.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 48),
@@ -72,7 +83,7 @@ class _StatsScreenState extends State<StatsScreen> {
               else ...[
                 _Summary(tips: tips),
                 const SizedBox(height: 12),
-                _TimeChart(tips: tips, period: _period, today: today),
+                _TimeChart(tips: tips, period: _period, today: today, month: month),
                 const SizedBox(height: 12),
                 _WeekdayChart(tips: tips),
                 const SizedBox(height: 12),
@@ -189,7 +200,13 @@ class _TimeChart extends StatelessWidget {
   final List<Tip> tips;
   final Period period;
   final DateTime today;
-  const _TimeChart({required this.tips, required this.period, required this.today});
+  final DateTime month;
+  const _TimeChart({
+    required this.tips,
+    required this.period,
+    required this.today,
+    required this.month,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -203,7 +220,9 @@ class _TimeChart extends StatelessWidget {
         width = 20;
         break;
       case Period.month:
-        b = dailyBuckets(tips, today, 30, weekdayLabels: false);
+        // Dni wybranego miesiąca: okno kończy się ostatnim dniem tego miesiąca.
+        final days = daysInMonth(month);
+        b = dailyBuckets(tips, DateTime(month.year, month.month, days), days, weekdayLabels: false);
         width = 5;
         skip = 5;
         break;
