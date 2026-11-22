@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 import '../dates.dart';
+import '../planning.dart' hide weekDays;
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
