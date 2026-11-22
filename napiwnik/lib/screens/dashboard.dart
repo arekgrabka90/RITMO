@@ -79,7 +79,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final unfilled = unfilledShifts(store.shifts, now);
         final toPay = daysToPayday(today, store.payDay);
         final payDate = nextPayday(today, store.payDay);
-        final showPay = toPay != null && payDate != null && toPay <= 7;
         final left = period.daysLeft(today);
         final goal = store.goal;
         final muted = Theme.of(context).colorScheme.onSurfaceVariant;
@@ -91,7 +90,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             children: [
               _TodayCard(shift: focus, now: now, next: upcoming.isEmpty ? null : upcoming.first),
-              if (showPay) ...[
+              // Licznik pojawia się na tydzień przed wypłatą.
+              if (toPay != null && payDate != null && toPay <= 7) ...[
                 const SizedBox(height: 12),
                 _PaydayTile(days: toPay, date: payDate),
               ],

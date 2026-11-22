@@ -47,17 +47,18 @@ class WorkplaceChips extends StatelessWidget {
   }
 }
 
+Shift? _linkedShiftOf(Tip tip) {
+  for (final sh in store.shifts) {
+    if (sh.tipId == tip.id) return sh;
+  }
+  return null;
+}
+
 /// Usuwa wpis napiwków i pokazuje „Cofnij”. Zmiana z grafiku połączona z wpisem po cofnięciu
 /// usunięcia znowu się z nim łączy. Wołaj synchronicznie z obsługi gestu.
 Future<void> deleteTipWithUndo(BuildContext context, Tip tip) async {
   final messenger = ScaffoldMessenger.of(context);
-  Shift? linkedShift;
-  for (final sh in store.shifts) {
-    if (sh.tipId == tip.id) {
-      linkedShift = sh;
-      break;
-    }
-  }
+  final linkedShift = _linkedShiftOf(tip);
   final ok = await store.deleteTip(tip);
   messenger.clearSnackBars();
   if (!ok) {
