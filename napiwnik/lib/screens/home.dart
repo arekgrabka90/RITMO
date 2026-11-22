@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
-import '../dates.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
-import '../widgets.dart';
 import 'entry_form.dart';
 
 /// Formularz wpisu napiwków. Z [shift] otwiera się z danymi zmiany z grafiku.
@@ -50,137 +47,89 @@ class WorkplaceChips extends StatelessWidget {
   }
 }
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: store,
-      builder: (context, _) {
-        final now = DateTime.now();
-        final month = store.month;
-        final isCurrent = sameMonth(month, now);
-        final tips = store.visible.where((t) => sameMonth(t.date, month)).toList();
-        final monthNet = tips.fold<int>(0, (s, t) => s + t.net);
-
-        return Scaffold(
-          appBar: AppBar(title: const Text('Napiwnik')),
-          floatingActionButton: FloatingActionButton.extended(
-            onPressed: () => openForm(context),
-            icon: const Icon(Icons.add),
-            label: const Text('Dodaj napiwki'),
-          ),
-          body: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-            children: [
-              const WorkplaceChips(),
-              PeriodSwitcher(
-                label: monthTitle(month),
-                onPrev: () => store.setMonth(addMonths(month, -1)),
-                onNext: isCurrent ? null : () => store.setMonth(addMonths(month, 1)),
-                onTap: isCurrent ? null : () => store.setMonth(now),
-              ),
-              _Hero(monthNet: monthNet, goal: store.goal),
-              const SizedBox(height: 8),
-              if (tips.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 48),
-                  child: Text(
-                    store.tips.isEmpty
-                        ? 'Brak wpisów. Po zmianie dotknij „Dodaj napiwki” i wpisz gotówkę oraz kartę.'
-                        : 'Brak wpisów w tym miesiącu.',
-                    textAlign: TextAlign.center,
-                  ),
-                )
-              else
-                ..._groups(context, tips),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  List<Widget> _groups(BuildContext context, List<Tip> tips) {
-    final out = <Widget>[];
-    DateTime? last;
-    for (final t in tips) {
-      if (last == null || last != t.date) {
-        out.add(Padding(
-          padding: const EdgeInsets.fromLTRB(4, 16, 4, 6),
-          child: Text(
-            toBeginningOfSentenceCase(DateFormat('EEEE, d MMMM', 'pl').format(t.date))!,
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-        ));
-        last = t.date;
-      }
-      out.add(_TipTile(tip: t));
+/// Usuwa wpis napiwków i pokazuje „Cofnij”. Zmiana z grafiku połączona z wpisem po cofnięciu
+/// usunięcia znowu się z nim łączy. Wołaj synchronicznie z obsługi gestu.
+Future<void> deleteTipWithUndo(BuildContext context, Tip tip) async {
+  final messenger = ScaffoldMessenger.of(context);
+  Shift? linkedShift;
+  for (final sh in store.shifts) {
+    if (sh.tipId == tip.id) {
+      linkedShift = sh;
+      break;
     }
-    return out;
   }
+  final ok = await store.deleteTip(tip);
+  messenger.clearSnackBars();
+  if (!ok) {
+    messenger.showSnackBar(const SnackBar(content: Text('Nie udało się usunąć wpisu.')));
+    return;
+  }
+  messenger.showSnackBar(SnackBar(
+    content: const Text('Usunięto wpis'),
+    action: SnackBarAction(
+      label: 'Cofnij',
+      onPressed: () async {
+        try {
+          if (linkedShift == null) {
+            await store.addTip(tip.asNew());
+          } else {
+            await store.addTipForShift(tip.asNew(), linkedShift);
+          }
+        } catch (_) {
+          messenger.showSnackBar(
+              const SnackBar(content: Text('Nie udało się cofnąć usunięcia.')));
+        }
+      },
+    ),
+  ));
 }
 
-class _Hero extends StatelessWidget {
-  final int monthNet;
-  final int goal;
-  const _Hero({required this.monthNet, required this.goal});
-
-  @override
-  Widget build(BuildContext context) {
-    final s = Theme.of(context).colorScheme;
-    final progress = goal > 0 ? (monthNet / goal).clamp(0.0, 1.0) : null;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(color: kTeal, borderRadius: BorderRadius.circular(18)),
+/// Przytrzymanie wpisu: lista opcji.
+void showTipOptions(BuildContext context, Tip tip) {
+  final error = Theme.of(context).colorScheme.error;
+  showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (ctx) => SafeArea(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Text(
-            'Netto za miesiąc',
-            style: TextStyle(color: Colors.white70, fontSize: 14),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            fmtMoney(monthNet),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 40,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -1,
-              fontFeatures: tabular,
-            ),
-          ),
-          if (progress != null) ...[
-            const SizedBox(height: 14),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 8,
-                color: kBrass,
-                backgroundColor: Colors.white24,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Netto ${fmtMoney(tip.net)}',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
             ),
-            const SizedBox(height: 6),
-            Text(
-              monthNet >= goal
-                  ? 'Cel ${fmtMoney(goal)} osiągnięty'
-                  : 'Do celu ${fmtMoney(goal)}: brakuje ${fmtMoney(goal - monthNet)}',
-              style: TextStyle(color: s.onPrimary.withOpacity(0.85), fontSize: 13),
-            ),
-          ],
+          ),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined),
+            title: const Text('Edytuj wpis'),
+            onTap: () {
+              Navigator.pop(ctx);
+              openForm(context, tip: tip);
+            },
+          ),
+          ListTile(
+            leading: Icon(Icons.delete_outline, color: error),
+            title: Text('Usuń wpis', style: TextStyle(color: error)),
+            onTap: () {
+              Navigator.pop(ctx);
+              deleteTipWithUndo(context, tip);
+            },
+          ),
         ],
       ),
-    );
-  }
+    ),
+  );
 }
 
-class _TipTile extends StatelessWidget {
+/// Wiersz wpisu napiwków: dotknięcie edytuje, przytrzymanie daje opcje, przesunięcie usuwa.
+class TipTile extends StatelessWidget {
   final Tip tip;
-  const _TipTile({required this.tip});
+  const TipTile({super.key, required this.tip});
 
   @override
   Widget build(BuildContext context) {
@@ -207,46 +156,13 @@ class _TipTile extends StatelessWidget {
         decoration: BoxDecoration(color: s.errorContainer, borderRadius: BorderRadius.circular(14)),
         child: Icon(Icons.delete_outline, color: s.onErrorContainer),
       ),
-      onDismissed: (_) async {
-        final messenger = ScaffoldMessenger.of(context);
-        // Zmiana z grafiku połączona z tym wpisem: po cofnięciu usunięcia połączenie wraca.
-        Shift? linkedShift;
-        for (final sh in store.shifts) {
-          if (sh.tipId == tip.id) {
-            linkedShift = sh;
-            break;
-          }
-        }
-        final ok = await store.deleteTip(tip);
-        messenger.clearSnackBars();
-        if (!ok) {
-          messenger.showSnackBar(const SnackBar(content: Text('Nie udało się usunąć wpisu.')));
-          return;
-        }
-        messenger.showSnackBar(SnackBar(
-          content: const Text('Usunięto wpis'),
-          action: SnackBarAction(
-            label: 'Cofnij',
-            onPressed: () async {
-              try {
-                if (linkedShift == null) {
-                  await store.addTip(tip.asNew());
-                } else {
-                  await store.addTipForShift(tip.asNew(), linkedShift);
-                }
-              } catch (_) {
-                messenger.showSnackBar(
-                    const SnackBar(content: Text('Nie udało się cofnąć usunięcia.')));
-              }
-            },
-          ),
-        ));
-      },
+      onDismissed: (_) => deleteTipWithUndo(context, tip),
       child: Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => openForm(context, tip: tip),
+          onLongPress: () => showTipOptions(context, tip),
           child: Panel(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: Row(

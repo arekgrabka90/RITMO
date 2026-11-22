@@ -55,20 +55,24 @@ void main() {
       expect(c.end, DateTime(2026, 11, 1));
     });
 
-    test('każdy dzień należy do dokładnie jednego okresu', () {
+    test('każdy dzień należy do okresu, a okresy przylegają do siebie', () {
       final anchor = DateTime(2026, 11, 4);
       for (final type in PeriodType.values) {
-        var day = DateTime(2026, 10, 1);
         for (var i = 0; i < 120; i++) {
-          day = DateTime(2026, 10, 1 + i);
+          final day = DateTime(2026, 10, 1 + i);
           final p = periodFor(day, type, anchor);
           expect(p.contains(day), isTrue, reason: '$type $day');
-          final prev = previousPeriod(p, type, anchor);
-          final next = nextPeriod(p, type, anchor);
-          expect(prev.end.add(const Duration(days: 1)).day, p.start.day);
-          expect(next.start.day, DateTime(p.end.year, p.end.month, p.end.day + 1).day);
+          expect(
+            previousPeriod(p, type, anchor).end,
+            DateTime(p.start.year, p.start.month, p.start.day - 1),
+            reason: '$type $day',
+          );
+          expect(
+            nextPeriod(p, type, anchor).start,
+            DateTime(p.end.year, p.end.month, p.end.day + 1),
+            reason: '$type $day',
+          );
         }
-        expect(day.isAfter(DateTime(2026, 10, 1)), isTrue);
       }
     });
   });
@@ -133,7 +137,7 @@ void main() {
       expect(nextPayday(DateTime(2026, 11, 21), 31), DateTime(2026, 11, 30));
       expect(nextPayday(DateTime(2026, 11, 30), 31), DateTime(2026, 11, 30));
       expect(nextPayday(DateTime(2026, 12, 1), 31), DateTime(2026, 12, 31));
-      expect(nextPayday(DateTime(2027, 1, 31), 30), DateTime(2027, 1, 30).isBefore(DateTime(2027, 1, 31)) ? DateTime(2027, 2, 28) : DateTime(2027, 1, 30));
+      expect(nextPayday(DateTime(2027, 1, 31), 30), DateTime(2027, 2, 28));
     });
 
     test('brak wypłaty', () {

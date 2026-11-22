@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
-import 'screens/home.dart';
+import 'screens/dashboard.dart';
 import 'screens/schedule.dart';
 import 'screens/settings.dart';
 import 'screens/stats.dart';
@@ -139,7 +139,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       body: IndexedStack(index: _i, children: const [
-        HomeScreen(),
+        DashboardScreen(),
         ScheduleScreen(),
         StatsScreen(),
         SettingsScreen(),
@@ -148,7 +148,7 @@ class _ShellState extends State<Shell> with WidgetsBindingObserver {
         selectedIndex: _i,
         onDestinationSelected: (i) => setState(() => _i = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), selectedIcon: Icon(Icons.receipt_long), label: 'Dziennik'),
+          NavigationDestination(icon: Icon(Icons.dashboard_outlined), selectedIcon: Icon(Icons.dashboard), label: 'Dashboard'),
           NavigationDestination(icon: Icon(Icons.calendar_month_outlined), selectedIcon: Icon(Icons.calendar_month), label: 'Grafik'),
           NavigationDestination(icon: Icon(Icons.insights_outlined), selectedIcon: Icon(Icons.insights), label: 'Statystyki'),
           NavigationDestination(icon: Icon(Icons.tune), label: 'Ustawienia'),
