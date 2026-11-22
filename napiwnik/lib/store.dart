@@ -121,7 +121,7 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Dodaje wpis napiwków i w tej samej transakcji ��czy go ze zmianą z grafiku.
+  /// Dodaje wpis napiwków i w tej samej transakcji łączy go ze zmianą z grafiku.
   Future<void> addTipForShift(Tip t, Shift s) async {
     final current = shifts.firstWhere((x) => x.id == s.id, orElse: () => s);
     if (current.tipId != null) throw StateError('Zmiana ma już wpis napiwków');
