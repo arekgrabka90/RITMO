@@ -14,6 +14,11 @@ DateTime addDays(DateTime d, int n) => DateTime(d.year, d.month, d.day + n);
 /// Poniedziałek tygodnia, do którego należy [d].
 DateTime weekStart(DateTime d) => DateTime(d.year, d.month, d.day - (d.weekday - 1));
 
+List<DateTime> weekDays(DateTime start) {
+  final monday = weekStart(start);
+  return List.generate(7, (index) => addDays(monday, index));
+}
+
 int daysInMonth(DateTime m) => DateTime(m.year, m.month + 1, 0).day;
 
 bool sameDay(DateTime a, DateTime b) =>

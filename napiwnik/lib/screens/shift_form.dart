@@ -6,7 +6,6 @@ import '../models.dart';
 import '../planning.dart';
 import '../store.dart';
 import '../theme.dart';
-import '../util.dart';
 import '../widgets.dart';
 
 void openShiftForm(BuildContext context, {Shift? shift, DateTime? date}) {
