@@ -35,10 +35,20 @@ Future<void> exportCsv() async {
   await Share.shareXFiles([XFile(f.path)], text: 'Napiwnik: eksport CSV');
 }
 
+/// Udostępnia kopię zapasową. Gdy użytkownik nie anulował udostępniania, zapamiętuje datę kopii
+/// (przypomnienie na Dashboardzie pojawia się dopiero po dłuższym czasie).
 Future<void> shareBackup() async {
   final dir = await getTemporaryDirectory();
   final name = 'napiwnik-kopia-${DateFormat('yyyyMMdd').format(DateTime.now())}.json';
   final f = File(p.join(dir.path, name));
   await f.writeAsString(store.backupJson());
-  await Share.shareXFiles([XFile(f.path)], text: 'Napiwnik: kopia zapasowa');
+  final res = await Share.shareXFiles([XFile(f.path)], text: 'Napiwnik: kopia zapasowa');
+  if (res.status != ShareResultStatus.dismissed) {
+    await store.markBackupDone();
+  }
+}
+
+/// Udostępnia zwykły tekst (np. podsumowanie okresu).
+Future<void> shareText(String text) async {
+  await Share.share(text);
 }

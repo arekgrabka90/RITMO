@@ -87,6 +87,9 @@ class PeriodStats {
   final int wages; // godziny × stawka, dotychczas
   final bool hasRates;
 
+  /// Wynagrodzenie za zaplanowane, jeszcze nieodpracowane godziny (do prognozy).
+  final int remainingWages;
+
   /// Suma utargu ze wpisów, w których go podano (informacyjnie), i napiwki brutto z tych samych wpisów.
   final int salesTotal;
   final int salesTipsGross;
@@ -100,6 +103,7 @@ class PeriodStats {
     required this.remainingMin,
     required this.wages,
     required this.hasRates,
+    this.remainingWages = 0,
     this.salesTotal = 0,
     this.salesTipsGross = 0,
   });
@@ -112,6 +116,15 @@ class PeriodStats {
 
   /// Napiwki jako procent utargu (tylko wpisy z utargiem) albo null.
   double? get tipsPercent => salesTotal > 0 ? salesTipsGross * 100 / salesTotal : null;
+
+  /// Szacunek całego okresu przy obecnym tempie: dotychczasowe zarobki plus zaplanowane godziny
+  /// (stawka i dotychczasowa średnia napiwków na godzinę). Null, gdy nie ma co przewidywać.
+  int? get forecastTotal {
+    if (remainingMin <= 0) return null;
+    final ph = tipsPerHour;
+    if (!hasRates && ph == null) return null;
+    return total + remainingWages + (ph == null ? 0 : (ph * remainingMin / 60).round());
+  }
 }
 
 /// „utarg 15 000,00 zł · 8% napiwków” albo null, gdy w okresie nikt nie podał utargu.
@@ -119,6 +132,35 @@ String? salesLine(PeriodStats s) {
   if (s.salesTotal <= 0) return null;
   final p = s.tipsPercent;
   return 'utarg ${fmtMoney(s.salesTotal)}${p != null ? ' · ${fmtPercent(p)} napiwków' : ''}';
+}
+
+/// Porównanie z poprzednim okresem: „+150,00 zł (+10%) wobec poprzedniego okresu”.
+/// Null, gdy poprzedni okres nie miał napiwków (nie ma z czym porównać).
+String? deltaLine(int current, int previous) {
+  if (previous <= 0) return null;
+  final diff = current - previous;
+  if (diff == 0) return 'tyle samo co w poprzednim okresie';
+  final sign = diff > 0 ? '+' : '-';
+  final pct = diff.abs() * 100 / previous;
+  return '$sign${fmtMoney(diff.abs())} ($sign${fmtPercent(pct)}) wobec poprzedniego okresu';
+}
+
+/// Tekstowe podsumowanie okresu do udostępnienia.
+String periodReportText({required BillingPeriod period, required PeriodStats stats}) {
+  final lines = <String>[
+    'Napiwnik, okres ${periodRangeLabel(period)}',
+    'Napiwki netto: ${fmtMoney(stats.tipsNet)}',
+    'Godziny: ${fmtDuration(stats.workedMin)}',
+  ];
+  final ph = stats.tipsPerHour;
+  if (ph != null) lines.add('Napiwki na godzinę: ${fmtMoney(ph)}');
+  final sales = salesLine(stats);
+  if (sales != null) lines.add('${sales[0].toUpperCase()}${sales.substring(1)}');
+  if (stats.hasRates) {
+    lines.add('Wypłata (stawka × godziny): ${fmtMoney(stats.wages)}');
+    lines.add('Razem: ${fmtMoney(stats.total)}');
+  }
+  return lines.join('\n');
 }
 
 int _pay(int rate, int minutes) => (rate * minutes / 60).round();
@@ -137,14 +179,17 @@ PeriodStats computePeriodStats({
   var worked = 0;
   var remaining = 0;
   var wages = 0;
+  var remainingWages = 0;
   var shiftCount = 0;
   for (final s in shifts) {
     if (!period.contains(s.date)) continue;
     shiftCount++;
     final e = elapsedMin(s, now);
+    final rate = rates[s.workplaceId] ?? 0;
     worked += e;
     remaining += s.durationMin - e;
-    wages += _pay(rates[s.workplaceId] ?? 0, e);
+    wages += _pay(rate, e);
+    remainingWages += _pay(rate, s.durationMin - e);
   }
   var net = 0;
   var gross = 0;
@@ -179,6 +224,7 @@ PeriodStats computePeriodStats({
     remainingMin: remaining,
     wages: wages,
     hasRates: rates.values.any((r) => r > 0),
+    remainingWages: remainingWages,
     salesTotal: salesTotal,
     salesTipsGross: salesGross,
   );

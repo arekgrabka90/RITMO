@@ -3,24 +3,36 @@ import 'dart:convert';
 import 'dates.dart';
 import 'models.dart';
 import 'period.dart';
+import 'planning.dart';
 
 const backupApp = 'napiwnik';
 const backupVersion = 2; // 1 = bez grafiku (nadal wczytywana), 2 = z grafikiem
 
 /// Ustawienia zapisywane w kopii. Każde pole może być null (nie podano lub zła wartość),
-/// a wtedy po przywróceniu zostaje obecne ustawienie.
+/// a wtedy po przywróceniu zostaje obecne ustawienie. PIN blokady nie jest w kopii.
 class BackupSettings {
   final int? weekStartDay; // 1–7
   final PeriodType? periodType;
   final DateTime? periodAnchor;
-  final int? payDay; // 0 = brak, 1–31
-  const BackupSettings({this.weekStartDay, this.periodType, this.periodAnchor, this.payDay});
+  final int? payDay; // 0 = brak, 1–31 (wypłata co miesiąc)
+  final int? payOffset; // -1 = brak, 0–14 (dni po końcu okresu tygodniowego/dwutygodniowego)
+  final List<ShiftTemplate>? templates;
+  const BackupSettings({
+    this.weekStartDay,
+    this.periodType,
+    this.periodAnchor,
+    this.payDay,
+    this.payOffset,
+    this.templates,
+  });
 
   Map<String, Object?> toMap() => {
         'week_start': weekStartDay,
         'period_type': periodType?.index,
         'period_anchor': periodAnchor == null ? null : dayKey(periodAnchor!),
         'pay_day': payDay,
+        'pay_offset': payOffset,
+        'templates': templates?.map((t) => t.toMap()).toList(),
       };
 }
 
@@ -67,11 +79,17 @@ BackupSettings? _parseSettings(Object? raw) {
     final d = DateTime.tryParse(a);
     if (d != null && d.year >= 2000 && d.year <= 2100) anchor = dateOnly(d);
   }
+  final tr = raw['templates'];
+  final templates = tr is List
+      ? tr.map(ShiftTemplate.tryParse).whereType<ShiftTemplate>().toList()
+      : null;
   return BackupSettings(
     weekStartDay: ranged(raw['week_start'], 1, 7),
     periodType: pt == null ? null : PeriodType.values[pt],
     periodAnchor: anchor,
     payDay: ranged(raw['pay_day'], 0, 31),
+    payOffset: ranged(raw['pay_offset'], -1, 14),
+    templates: templates,
   );
 }
 

@@ -18,6 +18,36 @@ class TimeRange {
   int get hashCode => Object.hash(start, end);
 }
 
+/// Szablon zmiany (np. „Lunch 10:00–16:00”): dotknięcie ustawia godziny w formularzu zmiany
+/// i w planowaniu tygodnia lub miesiąca.
+class ShiftTemplate {
+  final String name;
+  final int start;
+  final int end;
+  const ShiftTemplate(this.name, this.start, this.end);
+
+  TimeRange get range => TimeRange(start, end);
+
+  bool get valid => name.trim().isNotEmpty && range.valid;
+
+  Map<String, Object?> toMap() => {'name': name, 'start': start, 'end': end};
+
+  /// Łagodny odczyt: zły albo niepełny wpis daje null.
+  static ShiftTemplate? tryParse(Object? raw) {
+    if (raw is! Map) return null;
+    final n = raw['name'];
+    final s = raw['start'];
+    final e = raw['end'];
+    if (n is! String || s is! int || e is! int) return null;
+    final t = ShiftTemplate(n.trim(), s, e);
+    return t.valid ? t : null;
+  }
+}
+
+/// Czy dwie zmiany zachodzą na siebie w czasie (zmiana kończąca się dokładnie wtedy, gdy druga
+/// się zaczyna, nie nakłada się).
+bool shiftsOverlap(Shift a, Shift b) => a.start.isBefore(b.end) && b.start.isBefore(a.end);
+
 /// Co zrobić z dniem, który ma już zmianę: pominąć, dodać drugą obok albo zastąpić.
 enum Conflict { skip, add, replace }
 
@@ -72,4 +102,35 @@ BulkPlan buildBulkPlan({
     add.add(Shift(workplaceId: workplaceId, date: day, startMin: r.start, endMin: r.end));
   }
   return BulkPlan(add: add, replace: replace, skippedDays: skipped);
+}
+
+/// Kopiuje zmiany z tygodnia zaczynającego się w [weekStartDate] na tydzień później (bez wpisów
+/// napiwków). Dni, które w następnym tygodniu mają już jakąś zmianę ([existing]), są pomijane.
+BulkPlan copyWeekPlan({
+  required DateTime weekStartDate,
+  required List<Shift> source,
+  required List<Shift> existing,
+}) {
+  final end = addDays(weekStartDate, 6);
+  final list = source
+      .where((s) => !s.date.isBefore(weekStartDate) && !s.date.isAfter(end))
+      .toList()
+    ..sort((a, b) => a.start.compareTo(b.start));
+  final add = <Shift>[];
+  final skipped = <DateTime>{};
+  for (final s in list) {
+    final target = addDays(s.date, 7);
+    if (existing.any((x) => sameDay(x.date, target))) {
+      skipped.add(target);
+      continue;
+    }
+    add.add(Shift(
+      workplaceId: s.workplaceId,
+      date: target,
+      startMin: s.startMin,
+      endMin: s.endMin,
+      note: s.note,
+    ));
+  }
+  return BulkPlan(add: add, replace: const [], skippedDays: skipped.length);
 }

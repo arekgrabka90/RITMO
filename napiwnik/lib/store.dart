@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:math';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -33,11 +37,34 @@ class Store extends ChangeNotifier {
   /// Pierwszy dzień jednego z okresów rozliczeniowych (dla okresów tygodniowych i dwutygodniowych).
   DateTime periodAnchor = weekStart(dateOnly(DateTime.now()));
 
-  /// Dzień miesiąca, w którym przychodzi wypłata (1–31), 0 = nie ustawiono.
+  /// Dzień miesiąca, w którym przychodzi wypłata (1–31), 0 = nie ustawiono. Dotyczy okresu miesięcznego.
   int payDay = 0;
+
+  /// Dla okresu tygodniowego i dwutygodniowego: ile dni po końcu okresu przychodzi wypłata
+  /// (0–14, 0 = w ostatnim dniu okresu), -1 = nie ustawiono.
+  int payOffset = -1;
+
+  /// Szablony zmian (np. „Lunch 10:00–16:00”).
+  List<ShiftTemplate> templates = [];
 
   /// Ostatnio użyte godziny zmiany: podpowiedź przy planowaniu.
   TimeRange lastRange = const TimeRange(960, 1320);
+
+  /// Kiedy ostatnio zrobiono kopię zapasową (null = nigdy).
+  DateTime? lastBackupAt;
+
+  bool onboarded = false;
+
+  // Blokada PIN: w pamięci telefonu jest tylko hash z solą, nigdy sam PIN.
+  String? _pinHash;
+  String? _pinSalt;
+
+  bool get hasPin => _pinHash != null && _pinSalt != null;
+
+  bool get hasData => tips.isNotEmpty || shifts.isNotEmpty || workplaces.isNotEmpty;
+
+  /// Kreator pierwszego uruchomienia pokazujemy tylko, gdy aplikacja jest pusta i nikt go jeszcze nie przeszedł.
+  bool get needsOnboarding => !onboarded && !hasData;
 
   List<Tip> get visible => filterId == null
       ? tips
@@ -73,6 +100,20 @@ class Store extends ChangeNotifier {
 
   /// Bieżący okres rozliczeniowy według ustawień.
   BillingPeriod get currentPeriod => periodFor(DateTime.now(), periodType, periodAnchor);
+
+  /// Najbliższa wypłata według ustawień: w okresie miesięcznym dzień miesiąca, w tygodniowym i
+  /// dwutygodniowym określona liczba dni po końcu okresu. Null, gdy wypłata nie jest ustawiona.
+  DateTime? get nextPay {
+    final today = dateOnly(DateTime.now());
+    if (periodType == PeriodType.monthly) return nextPayday(today, payDay);
+    return nextPaydayAfterPeriod(today, periodType, periodAnchor, payOffset);
+  }
+
+  /// Ile dni do najbliższej wypłaty (0 = dzisiaj) albo null.
+  int? get daysToPay {
+    final n = nextPay;
+    return n == null ? null : daysBetween(dateOnly(DateTime.now()), n);
+  }
 
   /// Wywoływane po powrocie do aplikacji: ekrany przeliczają „dzisiaj” i bieżący okres
   /// (aplikacja mogła leżeć w tle przez północ).
@@ -111,7 +152,26 @@ class Store extends ChangeNotifier {
     }
     final pd = prefs.getInt('pay_day');
     payDay = (pd != null && pd >= 1 && pd <= 31) ? pd : 0;
+    final po = prefs.getInt('pay_offset');
+    payOffset = (po != null && po >= 0 && po <= 14) ? po : -1;
+    templates = _decodeTemplates(prefs.getString('templates'));
+    final lb = prefs.getInt('last_backup');
+    lastBackupAt = lb == null ? null : DateTime.fromMillisecondsSinceEpoch(lb);
+    _pinHash = prefs.getString('pin_hash');
+    _pinSalt = prefs.getString('pin_salt');
+    onboarded = prefs.getBool('onboarded') ?? false;
     notifyListeners();
+  }
+
+  List<ShiftTemplate> _decodeTemplates(String? raw) {
+    if (raw == null || raw.isEmpty) return [];
+    try {
+      final data = jsonDecode(raw);
+      if (data is! List) return [];
+      return data.map(ShiftTemplate.tryParse).whereType<ShiftTemplate>().toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> _reloadTips() async {
@@ -343,6 +403,65 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [days] 0–14 dni po końcu okresu, -1 = bez wypłaty.
+  Future<void> setPayOffset(int days) async {
+    if (days < -1 || days > 14) return;
+    payOffset = days;
+    (await SharedPreferences.getInstance()).setInt('pay_offset', days);
+    notifyListeners();
+  }
+
+  Future<void> setTemplates(List<ShiftTemplate> list) async {
+    templates = [for (final t in list) if (t.valid) t];
+    final json = jsonEncode(templates.map((t) => t.toMap()).toList());
+    (await SharedPreferences.getInstance()).setString('templates', json);
+    notifyListeners();
+  }
+
+  Future<void> markBackupDone() async {
+    lastBackupAt = DateTime.now();
+    (await SharedPreferences.getInstance()).setInt('last_backup', lastBackupAt!.millisecondsSinceEpoch);
+    notifyListeners();
+  }
+
+  Future<void> markOnboarded() async {
+    onboarded = true;
+    (await SharedPreferences.getInstance()).setBool('onboarded', true);
+    notifyListeners();
+  }
+
+  // ---- blokada PIN ----
+  String _hashPin(String pin, String salt) =>
+      sha256.convert(utf8.encode('$salt:$pin')).toString();
+
+  Future<void> setPin(String pin) async {
+    final r = Random.secure();
+    final salt = base64UrlEncode(List<int>.generate(16, (_) => r.nextInt(256)));
+    final hash = _hashPin(pin, salt);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('pin_salt', salt);
+    await prefs.setString('pin_hash', hash);
+    _pinSalt = salt;
+    _pinHash = hash;
+    notifyListeners();
+  }
+
+  bool checkPin(String pin) {
+    final salt = _pinSalt;
+    final hash = _pinHash;
+    if (salt == null || hash == null) return false;
+    return _hashPin(pin, salt) == hash;
+  }
+
+  Future<void> clearPin() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('pin_salt');
+    await prefs.remove('pin_hash');
+    _pinSalt = null;
+    _pinHash = null;
+    notifyListeners();
+  }
+
   // ---- kopia zapasowa ----
   String backupJson() => encodeBackup(
         workplaces: workplaces,
@@ -354,6 +473,8 @@ class Store extends ChangeNotifier {
           periodType: periodType,
           periodAnchor: periodAnchor,
           payDay: payDay,
+          payOffset: payOffset,
+          templates: templates,
         ),
       );
 
@@ -388,6 +509,10 @@ class Store extends ChangeNotifier {
       if (pa != null) await setPeriodAnchor(pa);
       final pd = st.payDay;
       if (pd != null) await setPayDay(pd);
+      final po = st.payOffset;
+      if (po != null) await setPayOffset(po);
+      final tl = st.templates;
+      if (tl != null) await setTemplates(tl);
     }
     filterId = null;
     await load();

@@ -30,14 +30,30 @@ jobs:
       - name: Wygeneruj folder android/ bez ruszania naszego kodu
         run: |
           cp -r lib /tmp/lib_bak
+          if [ -d test ]; then cp -r test /tmp/test_bak; fi
           cp pubspec.yaml /tmp/pubspec_bak.yaml
           flutter create --org pl.napiwnik --project-name napiwnik --platforms=android .
           rm -rf lib test
           cp -r /tmp/lib_bak lib
+          if [ -d /tmp/test_bak ]; then cp -r /tmp/test_bak test; fi
           cp /tmp/pubspec_bak.yaml pubspec.yaml
 
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      # Testy jednostkowe: nieudany test jest widoczny w logu, ale nie blokuje budowy APK.
+      - name: Testy jednostkowe
+        continue-on-error: true
+        run: flutter test
+
+      - name: Nazwa aplikacji na telefonie
+        run: sed -i 's/android:label="[^"]*"/android:label="Napiwnik"/' android/app/src/main/AndroidManifest.xml
+
+      - name: Ikona aplikacji
+        continue-on-error: true
+        run: |
+          pip install pillow
+          python3 tool/make_icon.py
 
       # Numer wersji rośnie z każdym uruchomieniem, żeby Android pozwolił zaktualizować aplikację.
       - run: flutter build apk --release --build-number=${{ github.run_number }}

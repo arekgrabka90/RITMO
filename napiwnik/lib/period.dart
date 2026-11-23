@@ -85,3 +85,27 @@ int? daysToPayday(DateTime today, int dayOfMonth) {
   final next = nextPayday(today, dayOfMonth);
   return next == null ? null : daysBetween(dateOnly(today), next);
 }
+
+/// Najbliższa wypłata, gdy przychodzi [offsetDays] dni po końcu okresu rozliczeniowego (0 = w ostatnim
+/// dniu okresu). Dzisiejsza też się liczy. Wypłata za któryś z poprzednich okresów może przypadać
+/// dopiero dzisiaj lub później (przy długim opóźnieniu), więc sprawdzamy kilka okresów wstecz.
+/// Zwraca null, gdy [offsetDays] nie jest z zakresu 0–14.
+DateTime? nextPaydayAfterPeriod(
+  DateTime today,
+  PeriodType type,
+  DateTime anchor,
+  int offsetDays,
+) {
+  if (offsetDays < 0 || offsetDays > 14) return null;
+  final t = dateOnly(today);
+  var p = periodFor(t, type, anchor);
+  for (var i = 0; i < 4; i++) {
+    p = previousPeriod(p, type, anchor);
+  }
+  for (var i = 0; i < 12; i++) {
+    final pay = addDays(p.end, offsetDays);
+    if (!pay.isBefore(t)) return pay;
+    p = nextPeriod(p, type, anchor);
+  }
+  return null;
+}

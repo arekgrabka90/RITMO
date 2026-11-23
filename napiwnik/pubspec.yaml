@@ -19,11 +19,12 @@ dependencies:
   fl_chart: ^0.68.0
   share_plus: ^9.0.0
   file_picker: ^8.0.0
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
