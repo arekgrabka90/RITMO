@@ -5,13 +5,17 @@ import 'package:intl/intl.dart';
 import '../buckets.dart';
 import '../dates.dart';
 import '../models.dart';
+import '../period.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
 import '../widgets.dart';
 import 'home.dart';
+import 'tiles.dart';
 
-enum Period { week, month, year, all }
+/// Zakres statystyk: ostatnie 7 dni, wybrany okres rozliczeniowy (ten sam co na Dashboardzie),
+/// ostatnie 12 miesięcy albo całość.
+enum StatsRange { week, period, year, all }
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -20,19 +24,20 @@ class StatsScreen extends StatefulWidget {
 }
 
 class _StatsScreenState extends State<StatsScreen> {
-  Period _period = Period.month;
+  StatsRange _range = StatsRange.period;
 
-  /// 7 dni i Rok to okna „od dziś wstecz”, Miesiąc to wybrany miesiąc kalendarzowy
-  /// (ten sam co w Dzienniku), Całość to wszystko.
-  bool _inPeriod(Tip t, DateTime today) {
-    switch (_period) {
-      case Period.week:
+  /// Okres wybrany strzałkami; null = bieżący okres z ustawień.
+  BillingPeriod? _custom;
+
+  bool _inRange(Tip t, DateTime today, BillingPeriod period) {
+    switch (_range) {
+      case StatsRange.week:
         return !t.date.isBefore(addDays(today, -6));
-      case Period.month:
-        return sameMonth(t.date, store.month);
-      case Period.year:
+      case StatsRange.period:
+        return period.contains(t.date);
+      case StatsRange.year:
         return !t.date.isBefore(addMonths(monthStart(today), -11));
-      case Period.all:
+      case StatsRange.all:
         return true;
     }
   }
@@ -43,9 +48,17 @@ class _StatsScreenState extends State<StatsScreen> {
       listenable: store,
       builder: (context, _) {
         final today = dateOnly(DateTime.now());
-        final month = store.month;
-        final isCurrent = sameMonth(month, today);
-        final tips = store.visible.where((t) => _inPeriod(t, today)).toList();
+        final type = store.periodType;
+        final anchor = store.periodAnchor;
+        final period = _custom ?? store.currentPeriod;
+        final next = nextPeriod(period, type, anchor);
+        final isCurrent = period.contains(today);
+        final tips = store.visible.where((t) => _inRange(t, today, period)).toList();
+        final muted = Theme.of(context).colorScheme.onSurfaceVariant;
+
+        void prev() => setState(() => _custom = previousPeriod(period, type, anchor));
+        void forward() => setState(() => _custom = next);
+        final canForward = !next.start.isAfter(today);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Statystyki')),
@@ -54,24 +67,36 @@ class _StatsScreenState extends State<StatsScreen> {
             children: [
               const WorkplaceChips(),
               const SizedBox(height: 12),
-              SegmentedButton<Period>(
+              SegmentedButton<StatsRange>(
                 showSelectedIcon: false,
                 segments: const [
-                  ButtonSegment(value: Period.week, label: Text('7 dni')),
-                  ButtonSegment(value: Period.month, label: Text('Miesiąc')),
-                  ButtonSegment(value: Period.year, label: Text('Rok')),
-                  ButtonSegment(value: Period.all, label: Text('Całość')),
+                  ButtonSegment(value: StatsRange.week, label: Text('7 dni')),
+                  ButtonSegment(value: StatsRange.period, label: Text('Okres')),
+                  ButtonSegment(value: StatsRange.year, label: Text('Rok')),
+                  ButtonSegment(value: StatsRange.all, label: Text('Całość')),
                 ],
-                selected: {_period},
-                onSelectionChanged: (s) => setState(() => _period = s.first),
+                selected: {_range},
+                onSelectionChanged: (s) => setState(() => _range = s.first),
               ),
-              if (_period == Period.month) ...[
+              if (_range == StatsRange.period) ...[
                 const SizedBox(height: 4),
-                PeriodSwitcher(
-                  label: monthTitle(month),
-                  onPrev: () => store.setMonth(addMonths(month, -1)),
-                  onNext: isCurrent ? null : () => store.setMonth(addMonths(month, 1)),
-                  onTap: isCurrent ? null : () => store.setMonth(today),
+                Swipeable(
+                  onPrev: prev,
+                  onNext: canForward ? forward : null,
+                  child: PeriodSwitcher(
+                    label: periodRangeLabel(period),
+                    onPrev: prev,
+                    onNext: canForward ? forward : null,
+                    onTap: isCurrent ? null : () => setState(() => _custom = null),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    isCurrent ? 'Bieżący okres, zostało ${fmtDays(period.daysLeft(today))}' : periodTypeName(type),
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: muted, fontSize: 13),
+                  ),
                 ),
               ],
               const SizedBox(height: 12),
@@ -83,7 +108,7 @@ class _StatsScreenState extends State<StatsScreen> {
               else ...[
                 _Summary(tips: tips),
                 const SizedBox(height: 12),
-                _TimeChart(tips: tips, period: _period, today: today, month: month),
+                _TimeChart(tips: tips, range: _range, today: today, period: period),
                 const SizedBox(height: 12),
                 _WeekdayChart(tips: tips),
                 const SizedBox(height: 12),
@@ -198,14 +223,14 @@ BarChartData _barData(BuildContext context, List<Bucket> b,
 
 class _TimeChart extends StatelessWidget {
   final List<Tip> tips;
-  final Period period;
+  final StatsRange range;
   final DateTime today;
-  final DateTime month;
+  final BillingPeriod period;
   const _TimeChart({
     required this.tips,
-    required this.period,
+    required this.range,
     required this.today,
-    required this.month,
+    required this.period,
   });
 
   @override
@@ -214,24 +239,24 @@ class _TimeChart extends StatelessWidget {
     var title = 'Netto dzień po dniu';
     var width = 12.0;
     var skip = 1;
-    switch (period) {
-      case Period.week:
+    switch (range) {
+      case StatsRange.week:
         b = dailyBuckets(tips, today, 7, weekdayLabels: true);
         width = 20;
         break;
-      case Period.month:
-        // Dni wybranego miesiąca: okno kończy się ostatnim dniem tego miesiąca.
-        final days = daysInMonth(month);
-        b = dailyBuckets(tips, DateTime(month.year, month.month, days), days, weekdayLabels: false);
-        width = 5;
-        skip = 5;
+      case StatsRange.period:
+        // Dni wybranego okresu: okno kończy się jego ostatnim dniem.
+        final n = period.days;
+        b = dailyBuckets(tips, period.end, n, weekdayLabels: n <= 7);
+        width = n <= 7 ? 20 : (n > 14 ? 5 : 12);
+        skip = n > 14 ? 5 : 1;
         break;
-      case Period.year:
+      case StatsRange.year:
         b = monthlyBuckets(tips, today, 12);
         title = 'Netto miesiąc po miesiącu';
         width = 14;
         break;
-      case Period.all:
+      case StatsRange.all:
         final months = monthsSpanned(tips, today);
         if (months > 24) {
           // Długi okres: lata zamiast miesięcy, żeby nic nie było ucinane z wykresu.
@@ -260,14 +285,17 @@ class _TimeChart extends StatelessWidget {
   }
 }
 
+/// Średnio na zmianę według dnia tygodnia, w kolejności od ustawionego pierwszego dnia tygodnia.
 class _WeekdayChart extends StatelessWidget {
   final List<Tip> tips;
   const _WeekdayChart({required this.tips});
 
   @override
   Widget build(BuildContext context) {
+    final start = store.weekStartDay;
     final b = <Bucket>[];
-    for (var wd = 1; wd <= 7; wd++) {
+    for (var i = 0; i < 7; i++) {
+      final wd = ((start - 1 + i) % 7) + 1;
       final list = tips.where((t) => t.date.weekday == wd).toList();
       final avg = list.isEmpty ? 0.0 : list.fold<int>(0, (s, t) => s + t.net) / list.length / 100;
       b.add(Bucket(weekdayShort[wd - 1], avg));

@@ -68,16 +68,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final now = DateTime.now();
         final today = dateOnly(now);
         final period = store.currentPeriod;
+        // Filtr miejsca pracy (chipsy u góry) działa tak samo jak w pozostałych zakładkach.
+        final shifts = store.visibleShifts;
+        final tipList = store.visible;
         final stats = computePeriodStats(
           period: period,
-          shifts: store.shifts,
-          tips: store.tips,
+          shifts: shifts,
+          tips: tipList,
           rates: store.rates,
           now: now,
         );
-        final focus = pickFocusShift(store.shifts, now);
-        final upcoming = upcomingShifts(store.shifts, now, exclude: focus, limit: 4);
-        final unfilled = unfilledShifts(store.shifts, now);
+        final focus = pickFocusShift(shifts, now);
+        final upcoming = upcomingShifts(shifts, now, exclude: focus, limit: 4);
+        final unfilled = unfilledShifts(shifts, now);
         final toPay = daysToPayday(today, store.payDay);
         final payDate = nextPayday(today, store.payDay);
         final left = period.daysLeft(today);
@@ -91,6 +94,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
             children: [
+              const WorkplaceChips(),
+              const SizedBox(height: 8),
               _TodayCard(shift: focus, now: now, next: upcoming.isEmpty ? null : upcoming.first),
               // Licznik pojawia się na tydzień przed wypłatą.
               if (toPay != null && payDate != null && toPay <= 7) ...[

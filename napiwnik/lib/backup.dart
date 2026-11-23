@@ -1,20 +1,41 @@
 import 'dart:convert';
 
+import 'dates.dart';
 import 'models.dart';
+import 'period.dart';
 
 const backupApp = 'napiwnik';
 const backupVersion = 2; // 1 = bez grafiku (nadal wczytywana), 2 = z grafikiem
+
+/// Ustawienia zapisywane w kopii. Każde pole może być null (nie podano lub zła wartość),
+/// a wtedy po przywróceniu zostaje obecne ustawienie.
+class BackupSettings {
+  final int? weekStartDay; // 1–7
+  final PeriodType? periodType;
+  final DateTime? periodAnchor;
+  final int? payDay; // 0 = brak, 1–31
+  const BackupSettings({this.weekStartDay, this.periodType, this.periodAnchor, this.payDay});
+
+  Map<String, Object?> toMap() => {
+        'week_start': weekStartDay,
+        'period_type': periodType?.index,
+        'period_anchor': periodAnchor == null ? null : dayKey(periodAnchor!),
+        'pay_day': payDay,
+      };
+}
 
 class BackupData {
   final List<Workplace> workplaces;
   final List<Tip> tips;
   final List<Shift> shifts;
   final int goal;
+  final BackupSettings? settings;
   const BackupData({
     required this.workplaces,
     required this.tips,
     this.shifts = const [],
     required this.goal,
+    this.settings,
   });
 }
 
@@ -23,6 +44,7 @@ String encodeBackup({
   required List<Tip> tips,
   List<Shift> shifts = const [],
   required int goal,
+  BackupSettings? settings,
 }) =>
     const JsonEncoder.withIndent('  ').convert({
       'app': backupApp,
@@ -31,13 +53,33 @@ String encodeBackup({
       'tips': tips.map((t) => t.toMap()).toList(),
       'shifts': shifts.map((s) => s.toMap()).toList(),
       'goal': goal,
+      if (settings != null) 'settings': settings.toMap(),
     });
+
+/// Ustawienia czytamy łagodnie: zła wartość jest po prostu pomijana, a nie uszkadza całej kopii.
+BackupSettings? _parseSettings(Object? raw) {
+  if (raw is! Map) return null;
+  int? ranged(Object? v, int min, int max) => (v is int && v >= min && v <= max) ? v : null;
+  final pt = ranged(raw['period_type'], 0, PeriodType.values.length - 1);
+  DateTime? anchor;
+  final a = raw['period_anchor'];
+  if (a is String) {
+    final d = DateTime.tryParse(a);
+    if (d != null && d.year >= 2000 && d.year <= 2100) anchor = dateOnly(d);
+  }
+  return BackupSettings(
+    weekStartDay: ranged(raw['week_start'], 1, 7),
+    periodType: pt == null ? null : PeriodType.values[pt],
+    periodAnchor: anchor,
+    payDay: ranged(raw['pay_day'], 0, 31),
+  );
+}
 
 /// Czyta i waliduje kopię zapasową BEZ dotykania bazy. Rzuca FormatException z komunikatem po polsku.
 /// Wpis lub zmiana wskazujące na nieistniejące miejsce pracy zostają, ale tracą przypisanie.
 /// Zmiana wskazująca na nieistniejący (albo już zajęty) wpis napiwków traci to połączenie.
-/// Starsze kopie bez stawki godzinowej miejsca pracy i bez utargu wpisu wczytują się z wartościami
-/// domyślnymi (stawka 0, brak utargu).
+/// Starsze kopie bez stawki godzinowej miejsca pracy, bez utargu wpisu i bez ustawień wczytują się
+/// z wartościami domyślnymi.
 BackupData parseBackup(String json) {
   const notBackup = FormatException('To nie jest kopia zapasowa Napiwnika.');
   const broken = FormatException('Plik kopii jest uszkodzony.');
@@ -117,7 +159,13 @@ BackupData parseBackup(String json) {
 
     final goal = (data['goal'] as num?)?.toInt() ?? 0;
     if (goal < 0) throw broken;
-    return BackupData(workplaces: workplaces, tips: tips, shifts: shifts, goal: goal);
+    return BackupData(
+      workplaces: workplaces,
+      tips: tips,
+      shifts: shifts,
+      goal: goal,
+      settings: _parseSettings(data['settings']),
+    );
   } catch (_) {
     throw broken;
   }

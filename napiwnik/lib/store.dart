@@ -21,11 +21,11 @@ class Store extends ChangeNotifier {
   List<Workplace> workplaces = [];
   List<Tip> tips = [];
   List<Shift> shifts = [];
-  int? filterId; // null = wszystkie miejsca
+  int? filterId; // null = wszystkie miejsca; filtr działa we wszystkich zakładkach
   int goal = 0; // cel napiwków na okres rozliczeniowy w groszach, 0 = brak
   ThemeMode themeMode = ThemeMode.system;
 
-  // ---- ustawienia okresu, tygodnia i wypłaty ----
+  // ---- ustawienia okresu, tygodnia i wypłaty (są też w kopii zapasowej) ----
   /// Dzień tygodnia, od którego zaczyna się tydzień w kalendarzach (1 = pn ... 7 = nd).
   int weekStartDay = DateTime.monday;
   PeriodType periodType = PeriodType.monthly;
@@ -38,10 +38,6 @@ class Store extends ChangeNotifier {
 
   /// Ostatnio użyte godziny zmiany: podpowiedź przy planowaniu.
   TimeRange lastRange = const TimeRange(960, 1320);
-
-  /// Wybrany miesiąc (pierwszy dzień) wspólny dla Statystyk. Nigdy w przyszłości.
-  DateTime month = monthStart(DateTime.now());
-  bool _followNow = true; // dopóki użytkownik nie wybierze innego miesiąca, śledzimy bieżący
 
   List<Tip> get visible => filterId == null
       ? tips
@@ -78,21 +74,9 @@ class Store extends ChangeNotifier {
   /// Bieżący okres rozliczeniowy według ustawień.
   BillingPeriod get currentPeriod => periodFor(DateTime.now(), periodType, periodAnchor);
 
-  void setMonth(DateTime m) {
-    final current = monthStart(DateTime.now());
-    var v = monthStart(m);
-    if (v.isAfter(current)) v = current;
-    month = v;
-    _followNow = v == current;
-    notifyListeners();
-  }
-
-  /// Wywoływane po powrocie do aplikacji: przelicza „dzisiaj”, a jeśli użytkownik jest
-  /// na bieżącym miesiącu, to przechodzi za nim na nowy.
-  void refreshClock() {
-    if (_followNow) month = monthStart(DateTime.now());
-    notifyListeners();
-  }
+  /// Wywoływane po powrocie do aplikacji: ekrany przeliczają „dzisiaj” i bieżący okres
+  /// (aplikacja mogła leżeć w tle przez północ).
+  void refreshClock() => notifyListeners();
 
   Future<void> load() async {
     final db = await AppDb.instance;
@@ -360,12 +344,22 @@ class Store extends ChangeNotifier {
   }
 
   // ---- kopia zapasowa ----
-  String backupJson() =>
-      encodeBackup(workplaces: workplaces, tips: tips, shifts: shifts, goal: goal);
+  String backupJson() => encodeBackup(
+        workplaces: workplaces,
+        tips: tips,
+        shifts: shifts,
+        goal: goal,
+        settings: BackupSettings(
+          weekStartDay: weekStartDay,
+          periodType: periodType,
+          periodAnchor: periodAnchor,
+          payDay: payDay,
+        ),
+      );
 
   /// Zastępuje całą bazę zawartością kopii. Plik jest w całości sprawdzany ZANIM cokolwiek zostanie
   /// usunięte, a zapis do bazy to jedna transakcja (przy błędzie stare dane zostają).
-  /// Rzuca FormatException przy złym pliku. Ustawienia okresu i wypłaty nie są w kopii.
+  /// Ustawienia z kopii (jeśli są) nadpisują obecne. Rzuca FormatException przy złym pliku.
   Future<void> restore(String json) async {
     final backup = parseBackup(json);
     final db = await AppDb.instance;
@@ -384,6 +378,17 @@ class Store extends ChangeNotifier {
       }
     });
     await setGoal(backup.goal);
+    final st = backup.settings;
+    if (st != null) {
+      final ws = st.weekStartDay;
+      if (ws != null) await setWeekStartDay(ws);
+      final pt = st.periodType;
+      if (pt != null) await setPeriodType(pt);
+      final pa = st.periodAnchor;
+      if (pa != null) await setPeriodAnchor(pa);
+      final pd = st.payDay;
+      if (pd != null) await setPayDay(pd);
+    }
     filterId = null;
     await load();
   }

@@ -13,7 +13,8 @@ import 'home.dart';
 import 'tiles.dart';
 
 /// Szczegóły okresu rozliczeniowego: sumy, podział na miejsca i lista wpisów napiwków.
-/// Strzałki przechodzą między okresami.
+/// Strzałki (albo przesunięcie palcem po pasku) przechodzą między okresami. Filtr miejsca pracy
+/// działa tak samo jak na Dashboardzie.
 class PeriodDetailsScreen extends StatefulWidget {
   const PeriodDetailsScreen({super.key});
 
@@ -35,30 +36,40 @@ class _PeriodDetailsScreenState extends State<PeriodDetailsScreen> {
         final anchor = store.periodAnchor;
         final next = nextPeriod(_period, type, anchor);
         final current = _period.contains(today);
+        final canForward = !next.start.isAfter(today);
+        final tipList = store.visible;
         final stats = computePeriodStats(
           period: _period,
-          shifts: store.shifts,
-          tips: store.tips,
+          shifts: store.visibleShifts,
+          tips: tipList,
           rates: store.rates,
           now: now,
         );
-        final tips = store.tips.where((t) => _period.contains(t.date)).toList();
-        final byPlace = tipsByWorkplace(_period, store.tips).entries.toList()
+        final tips = tipList.where((t) => _period.contains(t.date)).toList();
+        final byPlace = tipsByWorkplace(_period, tipList).entries.toList()
           ..sort((a, b) => b.value.compareTo(a.value));
         final muted = Theme.of(context).colorScheme.onSurfaceVariant;
         final perHour = stats.tipsPerHour;
         final sales = salesLine(stats);
+
+        void prev() => setState(() => _period = previousPeriod(_period, type, anchor));
+        void forward() => setState(() => _period = next);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Okres rozliczeniowy')),
           body: ListView(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
             children: [
-              PeriodSwitcher(
-                label: periodRangeLabel(_period),
-                onPrev: () => setState(() => _period = previousPeriod(_period, type, anchor)),
-                onNext: next.start.isAfter(today) ? null : () => setState(() => _period = next),
-                onTap: current ? null : () => setState(() => _period = store.currentPeriod),
+              const WorkplaceChips(),
+              Swipeable(
+                onPrev: prev,
+                onNext: canForward ? forward : null,
+                child: PeriodSwitcher(
+                  label: periodRangeLabel(_period),
+                  onPrev: prev,
+                  onNext: canForward ? forward : null,
+                  onTap: current ? null : () => setState(() => _period = store.currentPeriod),
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),

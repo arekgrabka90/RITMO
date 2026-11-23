@@ -157,7 +157,7 @@ class SettingsScreen extends StatelessWidget {
                     ListTile(
                       leading: const Icon(Icons.backup_outlined),
                       title: const Text('Zrób kopię zapasową'),
-                      subtitle: const Text('Plik JSON, zapisz go poza telefonem'),
+                      subtitle: const Text('Plik JSON: wpisy, zmiany, miejsca pracy i ustawienia'),
                       onTap: () => _run(context, shareBackup),
                     ),
                     ListTile(
@@ -171,7 +171,7 @@ class SettingsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'Wszystkie dane są tylko na tym telefonie. Aplikacja nie ma kont ani chmury, więc rób kopie zapasowe. Ustawienia okresu, tygodnia i wypłaty nie są w kopii.',
+                'Wszystkie dane są tylko na tym telefonie. Aplikacja nie ma kont ani chmury, więc rób kopie zapasowe.',
                 style: TextStyle(color: muted, fontSize: 13),
               ),
             ],
@@ -304,6 +304,7 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
+    c.dispose();
     if (v != null) await store.setPayDay(v);
   }
 
@@ -409,22 +410,41 @@ class SettingsScreen extends StatelessWidget {
 
   Future<void> _goalDialog(BuildContext context) async {
     final c = TextEditingController(text: fmtInput(store.goal));
+    String? error;
     final v = await showDialog<int>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cel napiwków na okres'),
-        content: TextField(
-          controller: c,
-          autofocus: true,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          decoration: const InputDecoration(labelText: 'Kwota netto', suffixText: 'zł', helperText: 'Zostaw puste, aby wyłączyć'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Cel napiwków na okres'),
+          content: TextField(
+            controller: c,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: 'Kwota netto',
+              suffixText: 'zł',
+              helperText: 'Zostaw puste, aby wyłączyć',
+              errorText: error,
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Anuluj')),
+            FilledButton(
+              onPressed: () {
+                final r = parseMoney(c.text);
+                if (r == null) {
+                  setState(() => error = 'Podaj kwotę, np. 3000 albo 3000,50');
+                  return;
+                }
+                Navigator.pop(ctx, r);
+              },
+              child: const Text('Zapisz'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Anuluj')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, parseMoney(c.text)), child: const Text('Zapisz')),
-        ],
       ),
     );
+    c.dispose();
     if (v != null) await store.setGoal(v);
   }
 
@@ -433,7 +453,7 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Przywrócić z kopii?'),
-        content: const Text('Wszystkie obecne wpisy, zmiany i miejsca pracy zostaną zastąpione danymi z pliku.'),
+        content: const Text('Wszystkie obecne wpisy, zmiany i miejsca pracy zostaną zastąpione danymi z pliku. Ustawienia z pliku (okres, tydzień, wypłata) też się zmienią.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
           FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Wybierz plik')),

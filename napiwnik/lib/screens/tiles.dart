@@ -2,6 +2,31 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
+/// Przesunięcie palcem w bok na [child] wywołuje [onPrev] (w prawo) albo [onNext] (w lewo).
+/// Brak funkcji = ten kierunek jest wyłączony. Używane przy paskach okresu.
+class Swipeable extends StatelessWidget {
+  final Widget child;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  const Swipeable({super.key, required this.child, this.onPrev, this.onNext});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: (d) {
+        final v = d.primaryVelocity ?? 0;
+        if (v < -300) {
+          onNext?.call();
+        } else if (v > 300) {
+          onPrev?.call();
+        }
+      },
+      child: child,
+    );
+  }
+}
+
 /// Kafelek z dużą liczbą: podpis, wartość, opcjonalny opis i dodatek (np. pasek postępu).
 /// Z [onTap] dotknięcie otwiera szczegóły.
 class StatTile extends StatelessWidget {
