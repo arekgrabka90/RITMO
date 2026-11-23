@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import '../models.dart';
 import '../store.dart';
 import '../util.dart';
-import 'home.dart';
+import 'shared.dart';
 import 'shift_form.dart';
 
 /// Usuwa zmianę i pokazuje „Cofnij”. Wołaj synchronicznie z obsługi gestu (messenger jest brany od razu).

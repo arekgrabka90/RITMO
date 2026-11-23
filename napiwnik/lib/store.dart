@@ -411,11 +411,12 @@ class Store extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Lista zmienia się od razu (ekran z Dismissible tego wymaga), a zapis do pamięci idzie zaraz potem.
   Future<void> setTemplates(List<ShiftTemplate> list) async {
     templates = [for (final t in list) if (t.valid) t];
+    notifyListeners();
     final json = jsonEncode(templates.map((t) => t.toMap()).toList());
     (await SharedPreferences.getInstance()).setString('templates', json);
-    notifyListeners();
   }
 
   Future<void> markBackupDone() async {

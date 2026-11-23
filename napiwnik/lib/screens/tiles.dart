@@ -28,7 +28,7 @@ class Swipeable extends StatelessWidget {
 }
 
 /// Kafelek z dużą liczbą: podpis, wartość, opcjonalny opis i dodatek (np. pasek postępu).
-/// Z [onTap] dotknięcie otwiera szczegóły.
+/// Dotknięcie ([onTap]) otwiera szczegóły, przytrzymanie ([onLongPress]) daje opcje.
 class StatTile extends StatelessWidget {
   final String label;
   final String value;
@@ -36,6 +36,7 @@ class StatTile extends StatelessWidget {
   final Color? valueColor;
   final Widget? extra;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
 
   const StatTile({
     super.key,
@@ -45,6 +46,7 @@ class StatTile extends StatelessWidget {
     this.valueColor,
     this.extra,
     this.onTap,
+    this.onLongPress,
   });
 
   @override
@@ -79,10 +81,11 @@ class StatTile extends StatelessWidget {
         ],
       ),
     );
-    if (onTap == null) return panel;
+    if (onTap == null && onLongPress == null) return panel;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
       onTap: onTap,
+      onLongPress: onLongPress,
       child: panel,
     );
   }

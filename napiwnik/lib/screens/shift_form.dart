@@ -6,6 +6,7 @@ import '../models.dart';
 import '../planning.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../util.dart';
 import '../widgets.dart';
 
 void openShiftForm(BuildContext context, {Shift? shift, DateTime? date}) {
@@ -14,7 +15,8 @@ void openShiftForm(BuildContext context, {Shift? shift, DateTime? date}) {
   );
 }
 
-/// Pojedyncza zmiana: dodawanie i edycja.
+/// Pojedyncza zmiana: dodawanie i edycja. Szablony zmian (z Ustawień) ustawiają godziny jednym
+/// dotknięciem, a zmiana nakładająca się na inną wymaga potwierdzenia.
 class ShiftForm extends StatefulWidget {
   final Shift? shift;
   final DateTime? initialDate;
@@ -89,6 +91,21 @@ class _ShiftFormState extends State<ShiftForm> {
       note: _note.text.trim(),
       tipId: widget.shift?.tipId,
     );
+    final clash = store.shifts.any((x) => x.id != shift.id && shiftsOverlap(x, shift));
+    if (clash) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Nakładające się zmiany'),
+          content: const Text('Ta zmiana nakłada się czasowo na inną zmianę. Zapisać mimo to?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Anuluj')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Zapisz')),
+          ],
+        ),
+      );
+      if (ok != true || !mounted) return;
+    }
     setState(() => _saving = true);
     try {
       if (widget.shift == null) {
@@ -133,6 +150,20 @@ class _ShiftFormState extends State<ShiftForm> {
               onChanged: (v) => setState(() => _wid = v),
             ),
             const SizedBox(height: 16),
+          ],
+          if (store.templates.isNotEmpty) ...[
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                for (final t in store.templates)
+                  ActionChip(
+                    label: Text('${t.name} · ${fmtTimeRange(t.start, t.end)}'),
+                    onPressed: () => setState(() => _range = t.range),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
           ],
           TimeRangeField(range: _range, onChanged: (r) => setState(() => _range = r)),
           const SizedBox(height: 16),

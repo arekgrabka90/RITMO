@@ -11,7 +11,7 @@ import '../widgets.dart';
 enum BulkMode { week, month }
 
 /// Planowanie wielu zmian naraz: zaznaczasz dni (tydzień albo miesiąc), ustawiasz godziny
-/// wspólne dla wszystkich i ewentualnie poprawiasz pojedyncze dni (godziny niestandardowe).
+/// wspólne dla wszystkich (ręcznie albo szablonem) i ewentualnie poprawiasz pojedyncze dni.
 /// Na liście dni: dotknięcie zmienia godziny dnia, przytrzymanie przywraca domyślne, a
 /// przesunięcie w lewo usuwa dzień z zaznaczenia.
 class BulkPlanScreen extends StatefulWidget {
@@ -237,6 +237,20 @@ class _BulkPlanScreenState extends State<BulkPlanScreen> {
                 const Text('Godziny dla wszystkich zaznaczonych dni',
                     style: TextStyle(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
+                if (store.templates.isNotEmpty) ...[
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      for (final t in store.templates)
+                        ActionChip(
+                          label: Text(t.name),
+                          onPressed: () => setState(() => _default = t.range),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 TimeRangeField(
                   range: _default,
                   onChanged: (r) => setState(() => _default = r),

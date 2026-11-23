@@ -9,7 +9,7 @@ import '../theme.dart';
 import '../util.dart';
 import '../widgets.dart';
 import 'bulk_plan.dart';
-import 'home.dart';
+import 'shared.dart';
 import 'shift_actions.dart';
 import 'shift_form.dart';
 
@@ -54,20 +54,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  Future<void> _plan(BulkMode mode, DateTime day) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final result = await Navigator.of(context).push<BulkResult>(
-      MaterialPageRoute(
-        builder: (_) => BulkPlanScreen(
-          mode: mode,
-          anchor: mode == BulkMode.week ? weekStart(day, store.weekStartDay) : monthStart(day),
-        ),
-      ),
-    );
-    if (result == null) return;
+  void _showBulkSnack(
+    ScaffoldMessengerState messenger,
+    BulkResult result, {
+    required String verb,
+    int skipped = 0,
+  }) {
     messenger.clearSnackBars();
+    final extra = skipped > 0 ? ' (pominięto dni: $skipped)' : '';
     messenger.showSnackBar(SnackBar(
-      content: Text('Dodano ${fmtShiftCount(result.addedIds.length)}'),
+      content: Text('$verb ${fmtShiftCount(result.addedIds.length)}$extra'),
       action: SnackBarAction(
         label: 'Cofnij',
         onPressed: () async {
@@ -81,7 +77,44 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     ));
   }
 
-  /// Przytrzymanie dnia: dodanie zmiany albo planowanie tygodnia lub miesiąca.
+  Future<void> _plan(BulkMode mode, DateTime day) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await Navigator.of(context).push<BulkResult>(
+      MaterialPageRoute(
+        builder: (_) => BulkPlanScreen(
+          mode: mode,
+          anchor: mode == BulkMode.week ? weekStart(day, store.weekStartDay) : monthStart(day),
+        ),
+      ),
+    );
+    if (result == null) return;
+    _showBulkSnack(messenger, result, verb: 'Dodano');
+  }
+
+  /// Kopiuje zmiany tygodnia z [day] na następny tydzień (dni, które tam mają już zmianę, pomija).
+  Future<void> _copyWeek(DateTime day) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final plan = copyWeekPlan(
+      weekStartDate: weekStart(day, store.weekStartDay),
+      source: store.visibleShifts,
+      existing: store.shifts,
+    );
+    messenger.clearSnackBars();
+    if (plan.add.isEmpty) {
+      messenger.showSnackBar(const SnackBar(
+        content: Text('Nie ma czego kopiować: w tym tygodniu nie ma zmian albo w następnym wszystkie dni są zajęte.'),
+      ));
+      return;
+    }
+    try {
+      final result = await store.applyBulk(add: plan.add);
+      _showBulkSnack(messenger, result, verb: 'Skopiowano', skipped: plan.skippedDays);
+    } catch (_) {
+      messenger.showSnackBar(const SnackBar(content: Text('Nie udało się skopiować tygodnia.')));
+    }
+  }
+
+  /// Przytrzymanie dnia: dodanie zmiany, planowanie albo kopiowanie tygodnia.
   void _dayOptions(DateTime day) {
     showModalBottomSheet<void>(
       context: context,
@@ -122,6 +155,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               onTap: () {
                 Navigator.pop(ctx);
                 _plan(BulkMode.month, day);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.content_copy_outlined),
+              title: const Text('Skopiuj ten tydzień na następny'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _copyWeek(day);
               },
             ),
           ],
@@ -206,7 +247,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               ],
               const SizedBox(height: 8),
               Text(
-                'Dotknij „Wolne”, aby dodać zmianę. Przytrzymaj dzień, aby zaplanować tydzień lub miesiąc. Przytrzymaj zmianę, aby zobaczyć opcje, a przesuń ją w lewo, aby usunąć.',
+                'Dotknij „Wolne”, aby dodać zmianę. Przytrzymaj dzień, aby zaplanować tydzień lub miesiąc albo skopiować tydzień. Przytrzymaj zmianę, aby zobaczyć opcje, a przesuń ją w lewo, aby usunąć.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: muted, fontSize: 13),
               ),
