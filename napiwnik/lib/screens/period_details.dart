@@ -47,6 +47,7 @@ class _PeriodDetailsScreenState extends State<PeriodDetailsScreen> {
           ..sort((a, b) => b.value.compareTo(a.value));
         final muted = Theme.of(context).colorScheme.onSurfaceVariant;
         final perHour = stats.tipsPerHour;
+        final sales = salesLine(stats);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Okres rozliczeniowy')),
@@ -75,7 +76,10 @@ class _PeriodDetailsScreenState extends State<PeriodDetailsScreen> {
                       child: StatTile(
                         label: 'Napiwki netto',
                         value: fmtMoney(stats.tipsNet),
-                        caption: perHour == null ? 'brak wpisów' : '${fmtMoney(perHour)} na godzinę',
+                        caption: [
+                          perHour == null ? 'brak wpisów' : '${fmtMoney(perHour)} na godzinę',
+                          if (sales != null) sales,
+                        ].join('\n'),
                       ),
                     ),
                     const SizedBox(width: 12),

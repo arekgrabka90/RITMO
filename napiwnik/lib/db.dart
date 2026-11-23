@@ -9,7 +9,7 @@ class AppDb {
     final dir = await getDatabasesPath();
     return openDatabase(
       p.join(dir, 'napiwnik.db'),
-      version: 3,
+      version: 4,
       onConfigure: (db) async => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: (db, v) async {
         await db.execute('''
@@ -27,7 +27,8 @@ class AppDb {
             card INTEGER NOT NULL DEFAULT 0,
             tip_out INTEGER NOT NULL DEFAULT 0,
             hours REAL,
-            note TEXT NOT NULL DEFAULT ''
+            note TEXT NOT NULL DEFAULT '',
+            sales INTEGER
           )''');
         await db.execute('CREATE INDEX idx_tips_date ON tips(date)');
         await _createShifts(db);
@@ -39,6 +40,10 @@ class AppDb {
           // Wersja 3: stawka godzinowa miejsca pracy (grosze za godzinę, 0 = brak).
           await db.execute(
               'ALTER TABLE workplaces ADD COLUMN hourly_rate INTEGER NOT NULL DEFAULT 0');
+        }
+        if (oldV < 4) {
+          // Wersja 4: utarg podany przez kelnera (grosze, NULL = nie podano). Dana tylko informacyjna.
+          await db.execute('ALTER TABLE tips ADD COLUMN sales INTEGER');
         }
       },
     );

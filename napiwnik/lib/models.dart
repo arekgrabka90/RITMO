@@ -29,6 +29,9 @@ class Tip {
   final double? hours;
   final String note;
 
+  /// Utarg podany przez kelnera (grosze) albo null. Wyłącznie informacyjnie, nie wpływa na kwoty.
+  final int? sales;
+
   const Tip({
     this.id,
     this.workplaceId,
@@ -38,12 +41,16 @@ class Tip {
     this.tipOut = 0,
     this.hours,
     this.note = '',
+    this.sales,
   });
 
   int get gross => cash + card;
   int get net => cash + card - tipOut;
   double? get perHour =>
       (hours != null && hours! > 0) ? net / hours! : null; // w groszach
+
+  /// Napiwki (gotówka + karta, przed odliczeniem) jako procent utargu; null bez utargu.
+  double? get tipPercent => (sales != null && sales! > 0) ? gross * 100 / sales! : null;
 
   Tip asNew() => Tip(
         workplaceId: workplaceId,
@@ -53,6 +60,7 @@ class Tip {
         tipOut: tipOut,
         hours: hours,
         note: note,
+        sales: sales,
       );
 
   Tip withId(int id) => Tip(
@@ -64,6 +72,7 @@ class Tip {
         tipOut: tipOut,
         hours: hours,
         note: note,
+        sales: sales,
       );
 
   Map<String, Object?> toMap() => {
@@ -75,6 +84,7 @@ class Tip {
         'tip_out': tipOut,
         'hours': hours,
         'note': note,
+        'sales': sales,
       };
 
   factory Tip.fromMap(Map<String, Object?> m) {
@@ -88,6 +98,7 @@ class Tip {
       tipOut: (m['tip_out'] as num?)?.toInt() ?? 0,
       hours: (m['hours'] as num?)?.toDouble(),
       note: (m['note'] as String?) ?? '',
+      sales: (m['sales'] as num?)?.toInt(),
     );
   }
 }

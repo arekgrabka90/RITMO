@@ -1,6 +1,8 @@
 import 'dates.dart';
 import 'models.dart';
+import 'percent.dart';
 import 'period.dart';
+import 'util.dart';
 
 /// Przez ile godzin po zakończeniu zmiana zostaje na Dashboardzie (żeby zdążyć wpisać napiwki).
 const dashboardLingerHours = 4;
@@ -85,6 +87,10 @@ class PeriodStats {
   final int wages; // godziny × stawka, dotychczas
   final bool hasRates;
 
+  /// Suma utargu ze wpisów, w których go podano (informacyjnie), i napiwki brutto z tych samych wpisów.
+  final int salesTotal;
+  final int salesTipsGross;
+
   const PeriodStats({
     required this.tipsNet,
     required this.tipsGross,
@@ -94,6 +100,8 @@ class PeriodStats {
     required this.remainingMin,
     required this.wages,
     required this.hasRates,
+    this.salesTotal = 0,
+    this.salesTipsGross = 0,
   });
 
   int get total => wages + tipsNet;
@@ -101,6 +109,16 @@ class PeriodStats {
   /// Napiwki netto na godzinę (grosze) albo null, gdy brak godzin lub wpisów.
   int? get tipsPerHour =>
       (workedMin > 0 && tipCount > 0) ? (tipsNet * 60 / workedMin).round() : null;
+
+  /// Napiwki jako procent utargu (tylko wpisy z utargiem) albo null.
+  double? get tipsPercent => salesTotal > 0 ? salesTipsGross * 100 / salesTotal : null;
+}
+
+/// „utarg 15 000,00 zł · 8% napiwków” albo null, gdy w okresie nikt nie podał utargu.
+String? salesLine(PeriodStats s) {
+  if (s.salesTotal <= 0) return null;
+  final p = s.tipsPercent;
+  return 'utarg ${fmtMoney(s.salesTotal)}${p != null ? ' · ${fmtPercent(p)} napiwków' : ''}';
 }
 
 int _pay(int rate, int minutes) => (rate * minutes / 60).round();
@@ -131,11 +149,18 @@ PeriodStats computePeriodStats({
   var net = 0;
   var gross = 0;
   var tipCount = 0;
+  var salesTotal = 0;
+  var salesGross = 0;
   for (final t in tips) {
     if (!period.contains(t.date)) continue;
     tipCount++;
     net += t.net;
     gross += t.gross;
+    final sv = t.sales;
+    if (sv != null && sv > 0) {
+      salesTotal += sv;
+      salesGross += t.gross;
+    }
     final id = t.id;
     if (id != null && linked.contains(id)) continue; // godziny policzone ze zmiany
     final h = t.hours;
@@ -154,6 +179,8 @@ PeriodStats computePeriodStats({
     remainingMin: remaining,
     wages: wages,
     hasRates: rates.values.any((r) => r > 0),
+    salesTotal: salesTotal,
+    salesTipsGross: salesGross,
   );
 }
 

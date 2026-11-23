@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models.dart';
+import '../percent.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
@@ -146,6 +147,10 @@ class TipTile extends StatelessWidget {
         ? null
         : '${fmtHours(tip.hours!)} h'
             '${ph != null ? ' · ${fmtMoney(ph.round())}/h' : ''}';
+    final pct = tip.tipPercent;
+    final salesText = tip.sales == null
+        ? null
+        : 'utarg ${fmtMoney(tip.sales!)}${pct != null ? ' · ${fmtPercent(pct)}' : ''}';
 
     return Dismissible(
       key: ValueKey('tip-${tip.id}'),
@@ -177,6 +182,8 @@ class TipTile extends StatelessWidget {
                       Text(parts.join(' · '), style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
                       if (hoursText != null)
                         Text(hoursText, style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
+                      if (salesText != null)
+                        Text(salesText, style: TextStyle(color: s.onSurfaceVariant, fontSize: 13)),
                       if (tip.note.isNotEmpty)
                         Text(tip.note,
                             maxLines: 1,

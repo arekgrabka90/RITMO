@@ -36,7 +36,8 @@ String encodeBackup({
 /// Czyta i waliduje kopię zapasową BEZ dotykania bazy. Rzuca FormatException z komunikatem po polsku.
 /// Wpis lub zmiana wskazujące na nieistniejące miejsce pracy zostają, ale tracą przypisanie.
 /// Zmiana wskazująca na nieistniejący (albo już zajęty) wpis napiwków traci to połączenie.
-/// Starsze kopie bez stawki godzinowej miejsca pracy dostają stawkę 0.
+/// Starsze kopie bez stawki godzinowej miejsca pracy i bez utargu wpisu wczytują się z wartościami
+/// domyślnymi (stawka 0, brak utargu).
 BackupData parseBackup(String json) {
   const notBackup = FormatException('To nie jest kopia zapasowa Napiwnika.');
   const broken = FormatException('Plik kopii jest uszkodzony.');
@@ -68,6 +69,8 @@ BackupData parseBackup(String json) {
     for (final e in data['tips'] as List) {
       final t = Tip.fromMap(Map<String, Object?>.from(e as Map));
       if (t.cash < 0 || t.card < 0 || t.tipOut < 0) throw broken;
+      final sales = t.sales;
+      if (sales != null && sales < 0) throw broken;
       final h = t.hours;
       if (h != null && (!h.isFinite || h <= 0 || h > 48)) throw broken;
       final id = t.id;
@@ -83,6 +86,7 @@ BackupData parseBackup(String json) {
               tipOut: t.tipOut,
               hours: t.hours,
               note: t.note,
+              sales: t.sales,
             )
           : t);
     }

@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import '../dates.dart';
 import '../models.dart';
 import '../overview.dart';
+import '../percent.dart';
 import '../period.dart';
 import '../store.dart';
 import '../theme.dart';
@@ -83,6 +84,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final goal = store.goal;
         final muted = Theme.of(context).colorScheme.onSurfaceVariant;
         final perHour = stats.tipsPerHour;
+        final sales = salesLine(stats);
 
         return Scaffold(
           appBar: AppBar(title: const Text('Dashboard')),
@@ -136,7 +138,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       child: StatTile(
                         label: 'Napiwki netto',
                         value: fmtMoney(stats.tipsNet),
-                        caption: perHour == null ? 'brak wpisów' : '${fmtMoney(perHour)} na godzinę',
+                        caption: [
+                          perHour == null ? 'brak wpisów' : '${fmtMoney(perHour)} na godzinę',
+                          if (sales != null) sales,
+                        ].join('\n'),
                         onTap: _openDetails,
                         extra: goal > 0
                             ? Padding(
@@ -256,9 +261,10 @@ class _TodayCard extends StatelessWidget {
         bigCaption = 'przepracowane dzisiaj';
         if (s.isDone) {
           final ph = tip?.perHour;
+          final pct = tip?.tipPercent;
           status = tip == null
               ? 'Napiwki wpisane'
-              : 'Napiwki netto ${fmtMoney(tip.net)}${ph != null ? ' · ${fmtMoney(ph.round())}/h' : ''}';
+              : 'Napiwki netto ${fmtMoney(tip.net)}${ph != null ? ' · ${fmtMoney(ph.round())}/h' : ''}${pct != null ? ' · ${fmtPercent(pct)} utargu' : ''}';
         } else {
           status = 'Dotknij, aby wpisać napiwki';
           statusColor = _gold;

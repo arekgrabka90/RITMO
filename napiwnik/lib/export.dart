@@ -14,7 +14,7 @@ Future<void> exportCsv() async {
   final dir = await getTemporaryDirectory();
   final f = File(p.join(dir.path, 'napiwki.csv'));
   final b = StringBuffer('\uFEFF')
-    ..writeln('data;miejsce;gotowka;karta;odliczenie;netto;godziny;na_godzine;notatka');
+    ..writeln('data;miejsce;gotowka;karta;odliczenie;netto;godziny;na_godzine;utarg;notatka');
   final rows = [...store.tips]..sort((a, b) => a.date.compareTo(b.date));
   for (final t in rows) {
     final ph = t.perHour;
@@ -27,6 +27,7 @@ Future<void> exportCsv() async {
       _num(t.net),
       t.hours == null ? '' : fmtHours(t.hours!),
       ph == null ? '' : _num(ph.round()),
+      t.sales == null ? '' : _num(t.sales!),
       csvCell(t.note),
     ].join(';'));
   }

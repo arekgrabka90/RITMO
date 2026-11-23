@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../dates.dart';
 import '../models.dart';
+import '../percent.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../util.dart';
@@ -25,6 +26,7 @@ class _EntryFormState extends State<EntryForm> {
   final _cash = TextEditingController();
   final _card = TextEditingController();
   final _out = TextEditingController();
+  final _sales = TextEditingController();
   final _hours = TextEditingController();
   final _note = TextEditingController();
 
@@ -41,6 +43,7 @@ class _EntryFormState extends State<EntryForm> {
       _cash.text = fmtInput(t.cash);
       _card.text = fmtInput(t.card);
       _out.text = fmtInput(t.tipOut);
+      _sales.text = t.sales == null ? '' : fmtInput(t.sales!);
       _hours.text = t.hours == null ? '' : fmtHours(t.hours!);
       _note.text = t.note;
     } else if (linked != null) {
@@ -56,7 +59,7 @@ class _EntryFormState extends State<EntryForm> {
 
   @override
   void dispose() {
-    for (final c in [_cash, _card, _out, _hours, _note]) {
+    for (final c in [_cash, _card, _out, _sales, _hours, _note]) {
       c.dispose();
     }
     super.dispose();
@@ -85,9 +88,10 @@ class _EntryFormState extends State<EntryForm> {
     final cash = parseMoney(_cash.text);
     final card = parseMoney(_card.text);
     final out = parseMoney(_out.text);
+    final sales = parseMoney(_sales.text);
     final hours = parseHours(_hours.text);
     final hoursOk = _hours.text.trim().isEmpty || hours != null;
-    if (cash == null || card == null || out == null || !hoursOk) {
+    if (cash == null || card == null || out == null || sales == null || !hoursOk) {
       _toast('Sprawdź kwoty i godziny (np. 120,50 oraz 6,5). Kwota może mieć najwyżej 2 miejsca po przecinku.');
       return;
     }
@@ -115,6 +119,7 @@ class _EntryFormState extends State<EntryForm> {
       tipOut: out,
       hours: hours,
       note: _note.text.trim(),
+      sales: sales == 0 ? null : sales, // puste pole = brak utargu
     );
     setState(() => _saving = true);
     try {
@@ -144,8 +149,11 @@ class _EntryFormState extends State<EntryForm> {
     final cash = parseMoney(_cash.text) ?? 0;
     final card = parseMoney(_card.text) ?? 0;
     final out = parseMoney(_out.text) ?? 0;
+    final salesValue = parseMoney(_sales.text) ?? 0;
     final net = cash + card - out;
     final hours = parseHours(_hours.text);
+    final percent = salesValue > 0 ? (cash + card) * 100 / salesValue : null;
+    final muted = Theme.of(context).colorScheme.onSurfaceVariant;
     final money = const TextInputType.numberWithOptions(decimal: true);
 
     return Scaffold(
@@ -222,6 +230,17 @@ class _EntryFormState extends State<EntryForm> {
           ),
           const SizedBox(height: 16),
           TextField(
+            controller: _sales,
+            keyboardType: money,
+            decoration: const InputDecoration(
+              labelText: 'Utarg (opcjonalnie)',
+              suffixText: 'zł',
+              helperText: 'Tylko informacyjnie, nie wpływa na żadne kwoty',
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 16),
+          TextField(
             controller: _hours,
             keyboardType: money,
             decoration: const InputDecoration(labelText: 'Przepracowane godziny', suffixText: 'h'),
@@ -244,7 +263,10 @@ class _EntryFormState extends State<EntryForm> {
                     const Text('Netto'),
                     if (hours != null && net >= 0)
                       Text('${fmtMoney((net / hours).round())} na godzinę',
-                          style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13)),
+                          style: TextStyle(color: muted, fontSize: 13)),
+                    if (percent != null)
+                      Text('napiwek ok. ${fmtPercent(percent)} utargu',
+                          style: TextStyle(color: muted, fontSize: 13)),
                   ],
                 ),
                 Text(fmtMoney(net),
