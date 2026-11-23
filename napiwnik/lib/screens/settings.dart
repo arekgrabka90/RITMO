@@ -264,6 +264,9 @@ class SettingsScreen extends StatelessWidget {
     if (d != null) await store.setWeekStartDay(d);
   }
 
+  // Uwaga: kontrolerów pól w oknach dialogowych nie wywołujemy dispose zaraz po zamknięciu okna,
+  // bo okno jeszcze się animuje i używałoby już zwolnionego kontrolera.
+
   Future<void> _payDayDialog(BuildContext context) async {
     final c = TextEditingController(text: store.payDay == 0 ? '' : '${store.payDay}');
     String? error;
@@ -304,7 +307,6 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
-    c.dispose();
     if (v != null) await store.setPayDay(v);
   }
 
@@ -363,11 +365,9 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
+    if (ok != true) return;
     final n = name.text.trim();
     final r = parseMoney(rate.text) ?? 0;
-    name.dispose();
-    rate.dispose();
-    if (ok != true) return;
     try {
       if (w == null) {
         await store.addWorkplace(n, rate: r);
@@ -444,7 +444,6 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
-    c.dispose();
     if (v != null) await store.setGoal(v);
   }
 
