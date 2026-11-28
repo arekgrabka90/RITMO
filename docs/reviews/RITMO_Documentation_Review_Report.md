@@ -1,8 +1,8 @@
 # RITMO v1.3 — Documentation Review Report
 
-*RITMO v1.3 Documentation Baseline — Frozen · 27.11.2026 · baza: `ritmo-develop`, HEAD `f39ac37`*
+*RITMO v1.3 Documentation Baseline — Frozen · 27.11.2026 · baza: `ritmo-develop`, HEAD `f39ac37` (stan wyjściowy audytu; stan repozytorium po wgraniu dokumentacji: sekcja 7)*
 
-**Werdykt: READY FOR DEVELOPMENT** dla Etapu 1 (E1-AUDIT) i pierwszego pakietu M0 (M0-A). Żadna decyzja nie blokuje startu tych pakietów, a dokumentacja jest wewnętrznie spójna w zakresie potrzebnym do ich realizacji. Zastrzeżenia: porządkowanie repozytorium nie zostało wykonane (wymaga Twojej zgody na commit), kontrola spójności nie jest pełnym drugim czytaniem wszystkich zdań, a żadnego testu nie uruchomiono.
+**Werdykt: READY FOR DEVELOPMENT** dla Etapu 1 (E1-AUDIT) i pierwszego pakietu M0 (M0-A). Żadna decyzja nie blokuje startu tych pakietów, a dokumentacja jest wewnętrznie spójna w zakresie potrzebnym do ich realizacji. Zastrzeżenia: kontrola spójności nie jest pełnym drugim czytaniem wszystkich zdań, a żadnego testu nie uruchomiono.
 
 ## 1. Dokumenty (status)
 
@@ -56,7 +56,7 @@ Metoda: odczyt Product Specification i Etapów przed zmianami, edycje blokowe, w
 - **Blokujące start Etapu 1 i M0:** żadna. Do domknięcia pakietów M0: D14 (restore) i D15 („Cofnij”). D6 (naprawa CI) nie jest elementem M0 i nie blokuje jego pakietów.
 - **Przed Etapem 2:** D1, D13. **Przed Etapem 3:** D2, D10, D11, D12. **Przed M2:** D3, D11, D5 w części salda. **Przed M3:** D4, D5.
 - **Można odłożyć:** D7, D8, D9, D16, D17, D19, a D18 do M1b.
-- **Nowe w tej rundzie:** D18 (historia stawek w kopii JSON v2, wykryta przy pracy nad D11) i D19 (główny README opisuje konkurencyjny zakres). Obie to Recommended i nie blokują M0.
+- **Nowe w tej rundzie:** D18 (historia stawek w kopii JSON v2, wykryta przy pracy nad D11) i D19 (główny README opisuje konkurencyjny zakres). Obie to Recommended i nie blokują M0. Wykonanie części D19 (zastąpienie głównego README i usunięcie tłumaczeń) opisuje sekcja 7; formalnie decyzja nadal czeka na akceptację.
 
 Pełna tabela: Product Specification §11.
 
@@ -76,32 +76,36 @@ Pełna tabela: Product Specification §11.
 
 - Wyniki testów i GitHub Actions (konektor ich nie udostępnia); żaden test nie jest uznany za przechodzący.
 - Pliki kodu: `dates.dart`, `buckets.dart`, `export.dart`, `widgets.dart`, `home.dart`, `schedule.dart`, `shift_actions.dart`, `bulk_plan.dart`, `period_details.dart`, `tiles.dart`, `percent.dart`, `theme.dart`, `tool/` oraz treść plików testów.
-- Siedem tłumaczeń README (zakładamy podobną treść do `README.md`), `applicationId` i manifest Androida.
+- Siedem tłumaczeń README (usunięte bez czytania ich treści; zakładano podobną treść do `README.md`; pozostają w historii Git w commicie `f39ac37`), `applicationId` i manifest Androida.
 - Implementacja „Cofnij” przy usuwaniu (README to deklaruje, kod nie został sprawdzony).
 - Rozdziały v1.2: D, E, H, F.7–F.10, G.1 (nie porównywane linia po linii), v1.0 i v1.1 jako osobne wersje.
 
 ## 7. Repozytorium
 
-**Inwentaryzacja `f39ac37`:** osiem plików README w katalogu głównym, `napiwnik/README.md`, brak katalogu `docs/`, brak innych dokumentów koncepcyjnych. Główny `README.md` opisuje inną koncepcję (Kotlin, Jetpack Compose, Room, brak obliczeń) i wskazuje pliki, których nie ma w repozytorium (D19). Nie ma starych specyfikacji do przeniesienia.
+**Stan wyjściowy (`f39ac37`):** osiem plików README w katalogu głównym, `napiwnik/README.md`, brak katalogu `docs/`, brak innych dokumentów koncepcyjnych. Główny `README.md` opisywał inną koncepcję (Kotlin, Jetpack Compose, Room, brak obliczeń) i wskazywał pliki, których nie ma w repozytorium (D19).
 
-**Czego nie wykonano i dlaczego:** konektor GitHub zapisuje zmiany tylko jako commity, a commity i pushe wymagają Twojej wyraźnej zgody. Nie symuluję sukcesu: w repozytorium nie zmieniono niczego.
+**Wykonane na `ritmo-develop`** (sprawdzone przez konektor GitHub 28.11.2026 na podstawie list plików w commitach):
 
-**Aktualizacja (ostatnie dwie korekty).** Zakres M0 został ujednolicony z D6 (naprawa CI to osobne zadanie), a oznaczanie historycznych wpisów napiwków opisano technicznie (`tips.record_model`, E3-K10). Wgranie dokumentacji do repozytorium nie zostało wykonane: konektor GitHub przyjmuje treść plików tylko jako tekst przekazywany w poleceniu, więc wgranie pięciu dokumentów (około 150 KB) i kopii v1.2 (około 144 KB) wymagałoby ręcznego przepisania około 300 KB treści. Przepisywanie takiej ilości tekstu grozi błędami i niepełnym commitem, dlatego pakiet czeka na wgranie przez eksport (instrukcja w `REPO_REORGANIZATION_PLAN.md`) albo na Twoją decyzję o innym sposobie. Kod, baza, zależności i workflow CI pozostają bez zmian.
+| Commit | Zmiana |
+| --- | --- |
+| `df39dfc` | dodano 8 plików w `docs/`: indeks, pięć dokumentów v1.3, kopię v1.2, archiwum poprzedniego README |
+| `cf379c7` | usunięto `README.md` i siedem tłumaczeń README |
+| `f0cb606` | dodano nowy, krótki `README.md` wskazujący na `docs/` i `napiwnik/` |
 
-**Pakiet przygotowany poza repozytorium:** `docs/README.md` (indeks), `docs/history/RITMO_v1.2_Original_Concept.md` (kopia v1.2 bez zmian), `docs/history/RITMO_README_0.0.1_Kotlin_concept.md` (archiwum obecnego README) oraz `REPO_REORGANIZATION_PLAN.md` (drzewo, operacje, proponowane poprawki README i `napiwnik/README.md`). Pięć dokumentów v1.3 trzeba wyeksportować z Claude Docs do Markdown i zapisać pod ścieżkami z planu.
+Zmiany ograniczają się do `docs/` i plików README. Kod, baza, zależności i workflow CI nie zostały zmienione.
 
 | Kategoria | Pliki |
 | --- | --- |
-| Dodane w repozytorium | brak (8 plików czeka na zatwierdzenie) |
-| Przeniesione do archiwum | brak (nie ma starych dokumentów) |
-| Zastąpione | brak |
-| Do zmiany po zatwierdzeniu | `README.md`, siedem tłumaczeń README (po D19), sekcja „Testy” w `napiwnik/README.md` |
-| Pozostawione bez zmian | cały kod, `pubspec.yaml`, `.github/` |
+| Dodane | 8 plików w `docs/`, nowy `README.md` |
+| Przeniesione do archiwum | treść dawnego `README.md` w `docs/history/RITMO_README_0.0.1_Kotlin_concept.md` |
+| Usunięte | siedem tłumaczeń README (`pl, es, de, fr, ru, it, pt-BR`), dostępne w historii Git (`f39ac37`) |
+| Pozostawione bez zmian | cały kod, `pubspec.yaml`, `.github/`, `napiwnik/README.md` |
+
+Do poprawy osobno: sekcja „Testy” w `napiwnik/README.md` twierdzi, że workflow pomija testy, a workflow uruchamia je z `continue-on-error`.
 
 ## 8. Potwierdzenie bezpieczeństwa
 
-- **Kod Dart i Flutter, baza i migracje, `applicationId`, `napiwnik.db`, SharedPreferences, format kopii JSON v1 i v2, zależności, workflow GitHub Actions i inne pliki CI: bez zmian.**
-- **Git: brak commitów, pushów, gałęzi i pull requestów.** Operacje na GitHubie ograniczone do odczytu.
+- **Kod Dart i Flutter, baza i migracje, `applicationId`, `napiwnik.db`, SharedPreferences, format kopii JSON v1 i v2, zależności, workflow GitHub Actions i inne pliki CI: bez zmian** (listy plików w commitach `df39dfc` i `cf379c7` obejmują wyłącznie `docs/` i pliki README).
 - Decyzje D1–D19 pozostają otwarte lub rekomendowane i nie oznaczono ich jako Accepted.
 
 ## 9. NEXT STEP — START DEVELOPMENT
